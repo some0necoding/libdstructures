@@ -1,37 +1,55 @@
 #!/bin/bash
 
-REPORT_FILE="./powerreport.csv"
-TUNINGS_START="Software Settings in Need of Tuning"
-
 powertop_install () {
+
+    local ret_value
 
     echo "Installing powertop utility..."
 
     sudo pacman -Sy powertop
 
-    echo "Done"
-}
+    ret_value=$?
 
-powertop_scan () {
-
-    echo "Scanning for tweakings..."
-
-    (sudo powertop -q --csv=$REPORT_FILE) >> /dev/null 2>&1
+    if [[ $ret_value != 0 ]]; then
+        echo "Error: cannot download powertop package"
+        return $ret_value
+    fi
 
     echo "Done"
+    return 0
 }
 
-get_tunings () {
+powertop_tuning () {
 
-    local line
+    local ret_value
 
-    while [[ read line ]]; do 
-        if [[ grep $TUNINGS_START $line ]]; 
+    echo "Tuning..."
 
+    (sudo powertop --auto-tune) >> /dev/null 2>&1
+
+    ret_value=$?
+
+    if [[ $ret_value != 0 ]]; then
+        echo "Error: something went wrong"
+        return $ret_value
+    fi
+
+    echo "Done"
+    return 0
+}
+
+power_management_config () {
+
+    local ret_value
+
+    powertop_install
+
+    ret_value=$?; [[ $ret_value != 0 ]] && return ret_value
+
+    powertop_tuning
+
+    ret_value=$?; [[ $ret_value != 0 ]] && return ret_value || return 0
 
 }
 
-# install powertop
-# store powertop scan in csv format
-# isolate needed tunings
-# perform tunings
+power_management_config
