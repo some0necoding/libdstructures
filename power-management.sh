@@ -1,11 +1,20 @@
 #!/bin/bash
 
+#***********************************************************#
+#															#
+#					power-management.sh						#
+#					 September 21, 2022						#
+#															#
+#		  Script file to set up power management.			#
+#															#
+#***********************************************************#
+
 # check powertop utility existance
 check_powertop () {
 
     local ret_value
 
-    echo "Looking for powertop utility..."
+	echo "Looking for powertop utility..."
 
     (pacman -Ss powertop) >> /dev/null 2>&1
 

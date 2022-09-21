@@ -1,5 +1,14 @@
 #!/bin/bash
 
+#***********************************************************#
+#															#
+#					  no-hibernate.sh						#
+#					September 21, 2022						#
+#															#
+#		    Script file to disable hibernation. 			#
+#															#
+#***********************************************************#
+
 LOGIND_CONFIG_FILE="./bin/no-hibernate-1.conf"
 SLEEP_CONFIG_FILE="./bin/no-hibernate-2.conf"
 
