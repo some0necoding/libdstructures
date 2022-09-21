@@ -1,6 +1,6 @@
 #!/bin/bash
 
-powertop_install () {
+install_powertop () {
 
     local ret_value
 
@@ -19,7 +19,7 @@ powertop_install () {
     return 0
 }
 
-powertop_tuning () {
+tune_settings () {
 
     local ret_value
 
@@ -38,18 +38,17 @@ powertop_tuning () {
     return 0
 }
 
-power_management_config () {
+run_configuration () {
 
     local ret_value
 
-    powertop_install
+    install_powertop
 
     ret_value=$?; [[ $ret_value != 0 ]] && return ret_value
 
-    powertop_tuning
+    tune_settings
 
     ret_value=$?; [[ $ret_value != 0 ]] && return ret_value || return 0
-
 }
 
-power_management_config
+run_configuration
