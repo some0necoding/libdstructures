@@ -1,7 +1,10 @@
 #!/bin/bash
 
+PID=$$
+RUNNING_DIR=$(pwdx $PID | cut -d " " -f 2)
+
 FANGFRISCH_CONF="fangfrisch.conf"
-LOCAL_CONF_DIR="/home/marco/coding/bash/linux_install_scripts/config"
+LOCAL_CONF_DIR="$RUNNING_DIR/config"
 FANGFRISCH_CONF_DIR="/etc"
 ENV_DIR="/var/lib/fangfrisch"
 
@@ -140,8 +143,7 @@ setup_fangfrisch_conf () {
     [[ $ret_value != 0 ]] && return $ret_value
 
     # Set up fangfrisch
-    sudo -u clamav -- "$ENV_DIR/venv/bin/fangfrisch" --conf "$FANGFRISCH_CONF_DIR/$FANGFRISCH_CONF" initdb; ret_value=$?
-    [[ $ret_value != 0 ]] && return $ret_value
+    sudo -u clamav -- "$ENV_DIR/venv/bin/fangfrisch" --conf "$FANGFRISCH_CONF_DIR/$FANGFRISCH_CONF" initdb
 
     # Copy fangfrisch.service into /etc/systemd/system
     cp "$LOCAL_CONF_DIR/$FANGFRISCH_SERVICE" "$SYSTEMD_PATH"; ret_value=$?
