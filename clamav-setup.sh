@@ -1,9 +1,14 @@
 #!/bin/bash
 
 FANGFRISCH_CONF="fangfrisch.conf"
-LOCAL_FANGFRISCH_CONF_DIR="/home/marco/coding/bash/linux_install_scripts/config"
+LOCAL_CONF_DIR="/home/marco/coding/bash/linux_install_scripts/config"
 FANGFRISCH_CONF_DIR="/etc"
 ENV_DIR="/var/lib/fangfrisch"
+
+SYSTEMD_PATH="/etc/systemd/system"
+FANGFRISCH_SERVICE="fangfrisch.service"
+FANGFRISCH_TIMER="fangfrisch.timer"
+
 ROOT_UID=0
 
 check_root () {
@@ -30,7 +35,7 @@ clamav_setup () {
         pacman -Sy clamav; ret_value=$?
         if [[ $ret_value != 0 ]]; then
             echo "Error: cannot install clamav package"
-            return 1
+            return $ret_value
         else
             echo "Done"
         fi
@@ -47,7 +52,7 @@ clamav_setup () {
     # Error checking
     if [[ $ret_value != 0 ]]; then
         echo "Error: cannot start clamav-freshclam.service"
-        return 1
+        return $ret_value
     fi
 
     # Enabling clamav-freshclam.service
@@ -56,7 +61,7 @@ clamav_setup () {
     # Error checking
     if [[ $ret_value != 0 ]]; then
         echo "Error: cannot enable clamav-freshclam.service"
-        return 1
+        return $ret_value
     fi
 
     # Check wether the user wants to enable the daemon or not
@@ -70,7 +75,7 @@ clamav_setup () {
         # Error checking
         if [[ $ret_value != 0 ]]; then
             echo "Error: cannot start clamav-daemon.service"
-            return 1
+            return $ret_value
         fi
 
         (systemctl enable clamav-daemon.service) > /dev/null 2>&1; ret_value=$?
@@ -78,7 +83,7 @@ clamav_setup () {
         # Error checking
         if [[ $ret_value != 0 ]]; then
             echo "Error: cannot enable clamav-daemon.service"
-            return 1
+            return $ret_value
         fi
     fi
 
@@ -93,10 +98,10 @@ create_env_dir () {
     echo "Creating $ENV_DIR directory..."
     
     mkdir -m 0770 -p $ENV_DIR; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
     
     chgrp clamav $ENV_DIR; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
 
     return 0
 }
@@ -107,19 +112,19 @@ install_fangfrisch () {
     local ret_value
 
     cd $ENV_DIR; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
 
     python3 -m venv venv; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
 
     source venv/bin/activate; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
 
     pip install fangfrisch; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
 
     deactivate; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
 
     return 0
 }
@@ -129,18 +134,39 @@ setup_fangfrisch_conf () {
 
     local ret_value
 
+    # Copy fangfrisch.conf into /etc directory
     echo "Setting up configuration file in /etc/fangfrisch.conf"
-    cp -r "$LOCAL_FANGFRISCH_CONF_DIR/$FANGFRISCH_CONF" $FANGFRISCH_CONF_DIR; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    cp "$LOCAL_CONF_DIR/$FANGFRISCH_CONF" $FANGFRISCH_CONF_DIR; ret_value=$?
+    [[ $ret_value != 0 ]] && return $ret_value
 
+    # Set up fangfrisch
     sudo -u clamav -- "$ENV_DIR/venv/bin/fangfrisch" --conf "$FANGFRISCH_CONF_DIR/$FANGFRISCH_CONF" initdb; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
 
+    # Copy fangfrisch.service into /etc/systemd/system
+    cp "$LOCAL_CONF_DIR/$FANGFRISCH_SERVICE" "$SYSTEMD_PATH"; ret_value=$?
+    [[ $ret_value != 0 ]] && return $ret_value
+
+    # Copy fangfrisch.timer into /etc/systemd/system
+    cp "$LOCAL_CONF_DIR/$FANGFRISCH_TIMER" "$SYSTEMD_PATH"; ret_value=$?
+    [[ $ret_value != 0 ]] && return $ret_value
+
+    # Starting fangfrisch.timer
+    (systemctl start fangfrisch.timer) > /dev/null 2>&1; ret_value=$?
+
+    # Error checking
+    if [[ $ret_value != 0 ]]; then
+        echo "Error: cannot start fangfrisch.timer"
+        return $ret_value
+    fi
+
+    # Enabling fangfrisch.timer
     (systemctl enable fangfrisch.timer) > /dev/null 2>&1; ret_value=$?
     
+    # Error checking
     if [[ $ret_value != 0 ]]; then
         echo "Error: cannot enable fangfrisch.timer"
-        return 1
+        return $ret_value
     fi
 
     return 0
@@ -153,16 +179,16 @@ fangfrisch_setup () {
 
     echo "Creating needed directories..."
     create_env_dir; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
 
     echo "Installing fangfrisch"
     install_fangfrisch; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
     echo "Done"
 
     echo "Configuring fangfrisch"
     setup_fangfrisch_conf; ret_value=$?
-    [[ $ret_value != 0 ]] && return 1
+    [[ $ret_value != 0 ]] && return $ret_value
 
     return 0
 }
@@ -172,13 +198,13 @@ run_setup () {
     local ret_value
 
     check_root; ret_value=$?
-    [[ $ret_value != 0 ]] && exit 1
+    [[ $ret_value != 0 ]] && exit $ret_value
 
     clamav_setup; ret_value=$?
-    [[ $ret_value != 0 ]] && exit 1
+    [[ $ret_value != 0 ]] && exit $ret_value
 
     fangfrisch_setup; ret_value=$?
-    [[ $ret_value != 0 ]] && exit 1
+    [[ $ret_value != 0 ]] && exit $ret_value
 
     echo "Done"
 
