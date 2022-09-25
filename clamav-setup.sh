@@ -5,6 +5,7 @@ RUNNING_DIR=$(pwdx $PID | cut -d " " -f 2)
 
 FANGFRISCH_CONF="fangfrisch.conf"
 LOCAL_CONF_DIR="$RUNNING_DIR/config"
+LOCAL_UNIT_DIR="$RUNNING_DIR/units"
 FANGFRISCH_CONF_DIR="/etc"
 ENV_DIR="/var/lib/fangfrisch"
 
@@ -146,11 +147,11 @@ setup_fangfrisch_conf () {
     sudo -u clamav -- "$ENV_DIR/venv/bin/fangfrisch" --conf "$FANGFRISCH_CONF_DIR/$FANGFRISCH_CONF" initdb
 
     # Copy fangfrisch.service into /etc/systemd/system
-    cp "$LOCAL_CONF_DIR/$FANGFRISCH_SERVICE" "$SYSTEMD_PATH"; ret_value=$?
+    cp "$LOCAL_UNIT_DIR/$FANGFRISCH_SERVICE" "$SYSTEMD_PATH"; ret_value=$?
     [[ $ret_value != 0 ]] && return $ret_value
 
     # Copy fangfrisch.timer into /etc/systemd/system
-    cp "$LOCAL_CONF_DIR/$FANGFRISCH_TIMER" "$SYSTEMD_PATH"; ret_value=$?
+    cp "$LOCAL_UNIT_DIR/$FANGFRISCH_TIMER" "$SYSTEMD_PATH"; ret_value=$?
     [[ $ret_value != 0 ]] && return $ret_value
 
     # Starting fangfrisch.timer
