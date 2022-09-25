@@ -1,5 +1,14 @@
 #!/bin/bash
 
+#***********************************************************#
+#															#
+#				       clamav-setup.sh  					#
+#				     September 21, 2022						#
+#															#
+#		      Script file to configure clamav.   			#
+#															#
+#***********************************************************#
+
 PID=$$
 RUNNING_DIR=$(pwdx $PID | cut -d " " -f 2)
 
