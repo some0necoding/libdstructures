@@ -10,21 +10,32 @@
 #***********************************************************#
 
 IPTABLES_RULES="/etc/iptables/iptables.rules"
+ROOT_UID=0
 
-# create TCP and UDP chains
+# Check for root
+check_root () {
+    if [[ $UID != $ROOT_UID ]]; then
+        echo "You must run this script as root"
+        return 1
+    fi
+
+    return 0
+}
+
+# Create TCP and UDP chains
 create_chains () {
     sudo iptables -N TCP
     sudo iptables -N UDP
 }
 
-# set default policy of INPUT FORWARD and DROP chains
+# Set default policy of INPUT FORWARD and DROP chains
 set_policy () {
     sudo iptables -P INPUT DROP
     sudo iptables -P FORWARD DROP
     sudo iptables -P OUTPUT ACCEPT
 }
 
-# set custom firewall rules
+# Set custom firewall rules
 set_rules () {
     sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
     sudo iptables -A INPUT -i lo -j ACCEPT
@@ -43,7 +54,7 @@ set_rules () {
     sudo iptables -A UDP -p udp -m udp --dport 53 -j ACCEPT
 }
 
-# apply changes system-wide and start/enable iptables
+# Apply changes system-wide and start/enable iptables
 apply_changes () {
     sudo iptables-save -f $IPTABLES_RULES
     sudo systemctl start iptables
@@ -52,16 +63,19 @@ apply_changes () {
 
 run_iptables_config () {
 
-    # ceate needed chains
+    # Checking for root
+    check_root
+
+    # Ceate needed chains
     create_chains
 
-    # set default policy
+    # Set default policy
     set_policy
 
-    # set custom rules
+    # Set custom rules
     set_rules
 
-    # save changes
+    # Save changes
     apply_changes
 
     exit 0
