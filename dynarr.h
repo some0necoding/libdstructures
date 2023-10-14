@@ -23,7 +23,7 @@ struct dynarr_header {
 
 #define dynarr_add(a, elem) { \
     if (a.header.length >= a.header.capacity) { \
-        a.data = realloc(a.data, sizeof(*a.data) * a.header.capacity * 2); \
+        a.data = realloc(a.data, a.header.elem_size * a.header.capacity * 2); \
         if (!a.data) { \
             fprintf(stderr, "error: %s:%d (errno: %d) \
                             Cannot allocate memory\n", __FILE__, \
