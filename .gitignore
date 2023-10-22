@@ -1,3 +1,6 @@
+**/main
+**/main.o
+**/main.c
 **/Makefile
 **/Makefile.in
 **/.deps
