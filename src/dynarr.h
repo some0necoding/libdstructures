@@ -26,15 +26,23 @@ struct dynarr_header {
         a.data = realloc(a.data, a.header.elem_size * a.header.capacity * 2); \
         if (!a.data) { \
             fprintf(stderr, "error: %s:%d (errno: %d) \
-                            Cannot allocate memory\n", __FILE__, \
-                                                       __LINE__, \
-                                                       errno); \
+                             Cannot allocate memory\n", __FILE__, \
+                                                        __LINE__, \
+                                                        errno); \
             return -1; \
         } \
         a.header.capacity *= 2; \
     } \
     a.data[a.header.length] = elem; \
     a.header.length++; \
+}
+
+#define dynarr_remove(a, i) { \
+    if (i < 0 || i >= a.header.length) return 0; \
+    for (int j = i + 1; j < a.header.length; j++) { \
+        a.data[j - 1] = a.data[j]; \
+    } \
+    a.header.length--; \
 }
 
 #define dynarr_get(a, i, elem) { \
@@ -55,16 +63,17 @@ struct dynarr_header {
     a.data[i] = elem; \
 }
 
-#define dynarr_remove(a, i) { \
-    if (i < 0 || i >= a.header.length) return 0; \
-    for (int j = i + 1; j < a.header.length; j++) { \
-        a.data[j - 1] = a.data[j]; \
-    } \
-    a.header.length--; \
-}
+#define dynarr_to_arr(a, __arr) ({ \
+    arr = malloc(a.header.capacity * a.header.elem_size); \
+    memcpy(arr, a.data, a.header.elem_size * a.header.length); \
+    int __size = a.header.length; \
+    __size; \
+})
 
 #define dynarr_free(a) { \
-    free(a.data) \
+    if (a.data) { \
+        free(a.data); \
+    } \
 }
 
 #endif
