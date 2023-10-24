@@ -53,13 +53,7 @@ struct dynarr_header {
 #define dynarr_add(a, elem) { \
     if (a.header.length >= a.header.capacity) { \
         a.data = realloc(a.data, a.header.elem_size * a.header.capacity * 2); \
-        if (!a.data) { \
-            fprintf(stderr, "error: %s:%d (errno: %d) \
-                             Cannot allocate memory\n", __FILE__, \
-                                                        __LINE__, \
-                                                        errno); \
-            return -1; \
-        } \
+        if (!a.data) return -1; \
         a.header.capacity *= 2; \
     } \
     a.data[a.header.length] = elem; \
@@ -123,8 +117,9 @@ struct dynarr_header {
  *  - a must be a dynarr initialized with dynarr_init(a)
  *  - arr must be a pointer to a fixed size array of the dynarr type T
  */
-#define dynarr_to_arr(a, __arr) ({ \
+#define dynarr_to_arr(a, arr) ({ \
     arr = malloc(a.header.capacity * a.header.elem_size); \
+    if (!arr) return -1; \
     memcpy(arr, a.data, a.header.elem_size * a.header.length); \
     int __size = a.header.length; \
     __size; \
