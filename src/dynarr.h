@@ -85,8 +85,8 @@ struct dynarr_header {
  */
 #define dynarr_get(a, i, elem) { \
     if (i < 0 || i >= a.header.length) { \
-        fprintf(stderr, "error: %s:%d Array out of bound\n", __FILE__, \
-                                                             __LINE__); \
+        fprintf(stderr, "%s:%d Array out of bound\n", __FILE__, \
+                                                      __LINE__); \
         return -1; \
     } \
     elem = a.data[i]; \
@@ -104,7 +104,7 @@ struct dynarr_header {
  */
 #define dynarr_set(a, i, elem) { \
     if (i < 0 || i >= a.header.length) { \
-        fprintf(stderr, "error: %s:%d Array out of bound\n", __FILE__, \
+        fprintf(stderr, "%s:%d Array out of bound\n", __FILE__, \
                                                              __LINE__); \
         return -1; \
     } \
