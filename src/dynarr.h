@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define DEFAULT_CAP 10
 
@@ -16,6 +17,7 @@ struct dynarr_header {
     size_t length;
     size_t capacity;
     size_t elem_size;
+    bool is_init;
 };
 
 /**
@@ -38,6 +40,7 @@ struct dynarr_header {
     a.header.capacity = DEFAULT_CAP; \
     a.header.elem_size = sizeof(*a.data); \
     a.data = malloc(sizeof(*a.data) * DEFAULT_CAP); \
+    a.header.is_init = true; \
 }
 
 /**
@@ -134,7 +137,7 @@ struct dynarr_header {
  *  - a must be a dynarr initialized with dynarr_init(a)
  */
 #define dynarr_free(a) { \
-    if (a.data) { \
+    if (a.header.is_init) { \
         free(a.data); \
     } \
 }
