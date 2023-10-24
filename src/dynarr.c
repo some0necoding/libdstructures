@@ -38,6 +38,9 @@
  *      on it (e.g. add(), remove(), set(), etc.). Single functions' specifi-
  *      cations can be read in the header file.
  *
+ *      When you finished using your dynarr remember to free it using the
+ *      function dynarr_free() in order to avoid memory leaks.
+ *
  */
 
 #include "dynarr.h"
