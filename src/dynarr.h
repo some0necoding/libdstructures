@@ -130,6 +130,15 @@ struct dynarr_header {
     __size; \
 })
 
+/**
+ * Transform a fixed size array to a dynarr.
+ *
+ * PARAMS:
+ *  - a must be a dynarr defined with DYNARR(T)
+ *  - T the type of both the fixed size array and the dynarr
+ *  - arr must be a pointer to a fixed size array of type T
+ *  - size is the number of elements of a.
+ */
 #define arr_to_dynarr(a, T, arr, size) { \
     dynarr_free(a); \
     dynarr_init(a); \
