@@ -15,9 +15,9 @@
  */
 struct dynarr_header {
     size_t length;
-    size_t capacity;
-    size_t elem_size;
-    bool is_init;
+    size_t __capacity;
+    size_t __elem_size;
+    bool __is_init;
 };
 
 /**
@@ -37,10 +37,10 @@ struct dynarr_header {
  */
 #define dynarr_init(a) { \
     a.header.length = 0; \
-    a.header.capacity = DEFAULT_CAP; \
-    a.header.elem_size = sizeof(*a.data); \
+    a.header.__capacity = DEFAULT_CAP; \
+    a.header.__elem_size = sizeof(*a.data); \
     a.data = malloc(sizeof(*a.data) * DEFAULT_CAP); \
-    a.header.is_init = true; \
+    a.header.__is_init = true; \
 }
 
 /**
@@ -51,10 +51,10 @@ struct dynarr_header {
  *  - elem must be a variable of dynarr type T
  */
 #define dynarr_add(a, elem) { \
-    if (a.header.length >= a.header.capacity) { \
-        a.data = realloc(a.data, a.header.elem_size * a.header.capacity * 2); \
+    if (a.header.length >= a.header.__capacity) { \
+        a.data = realloc(a.data, a.header.__elem_size * a.header.__capacity * 2); \
         if (!a.data) return -1; \
-        a.header.capacity *= 2; \
+        a.header.__capacity *= 2; \
     } \
     a.data[a.header.length] = elem; \
     a.header.length++; \
@@ -122,9 +122,9 @@ struct dynarr_header {
  *  - arr must be a pointer to a fixed size array of the dynarr type T
  */
 #define dynarr_to_arr(a, arr) ({ \
-    arr = malloc(a.header.capacity * a.header.elem_size); \
+    arr = malloc(a.header.__capacity * a.header.__elem_size); \
     if (!arr) return -1; \
-    memcpy(arr, a.data, a.header.elem_size * a.header.length); \
+    memcpy(arr, a.data, a.header.__elem_size * a.header.length); \
     int __size = a.header.length; \
     __size; \
 })
@@ -153,7 +153,7 @@ struct dynarr_header {
  *  - a must be a dynarr defined with DYNARR(T)
  */
 #define dynarr_free(a) { \
-    if (a.header.is_init) { \
+    if (a.header.__is_init) { \
         free(a.data); \
     } \
 }
