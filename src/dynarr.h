@@ -76,7 +76,7 @@ struct dynarr_header {
 }
 
 /**
- * Return i-th element of a dynarr.
+ * Retrieve i-th element of a dynarr. If i is out of bound -1 is returned.
  *
  * PARAMS:
  *  - a must be a dynarr initialized with dynarr_init(a)
@@ -93,7 +93,9 @@ struct dynarr_header {
 }
 
 /**
- * Set i-th element of a dynarr to a new value.
+ * Set i-th element of a dynarr to a new value. If i is out of bound the
+ * dynarr is not stretched; rather use dynarr_add() to stretch the
+ * dynarr.
  *
  * PARAMS:
  *  - a must be a dynarr initialized with dynarr_init(a)
@@ -126,13 +128,13 @@ struct dynarr_header {
 })
 
 /**
- * Transform a fixed size array to a dynarr.
+ * Transform a fixed size array to a dynarr. Array is not free'd.
  *
  * PARAMS:
  *  - a must be a dynarr defined with DYNARR(T)
  *  - T the type of both the fixed size array and the dynarr
  *  - arr must be a pointer to a fixed size array of type T
- *  - size is the number of elements of a.
+ *  - size is the number of elements of arr.
  */
 #define arr_to_dynarr(a, T, arr, size) { \
     dynarr_free(a); \
@@ -146,7 +148,7 @@ struct dynarr_header {
  * Free a dynarr.
  *
  * PARAMS:
- *  - a must be a dynarr initialized with dynarr_init(a)
+ *  - a must be a dynarr defined with DYNARR(T)
  */
 #define dynarr_free(a) { \
     if (a.header.is_init) { \
