@@ -130,6 +130,14 @@ struct dynarr_header {
     __size; \
 })
 
+#define arr_to_dynarr(a, T, arr, size) { \
+    dynarr_free(a); \
+    dynarr_init(a); \
+    for (int i = 0; i < size; i++) { \
+        dynarr_add(a, arr[i]); \
+    } \
+}
+
 /**
  * Free a dynarr.
  *
