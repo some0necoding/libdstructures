@@ -1,6 +1,6 @@
 # Data Structures in C
 
-Library of (more) complex data structures written in C.  
+Library of (more) complex data structures written in C.
  - Dynamic Arrays
  - Linked Lists
  - Doubly Linked Lists

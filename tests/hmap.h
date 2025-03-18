@@ -1,0 +1,11 @@
+void test_hmap_add_heap_ptr();
+void test_hmap_add_stack_ptr();
+void test_hmap_add_8();
+void test_hmap_add_16();
+void test_hmap_add_32();
+void test_hmap_add_64();
+void test_hmap_add_heap_allocated_struct();
+void test_hmap_remove();
+void test_hmap_rehash();
+void test_hmap_add_str_key();
+void test_hmap_add_duplicate_key();
