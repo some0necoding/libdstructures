@@ -134,9 +134,11 @@ uint8_t hmap_put64(hmap* map, void* key, size_t key_size, uint64_t value)
 static int hmap_put_entry(hmap* map, hmap_entry* entry)
 {
     uint32_t hash = map->hash(entry->key, entry->key_size) % map->cap;
-    while (map->entries[hash]) hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    while (map->entries[hash] && memcmp(map->entries[hash]->key, entry->key, map->entries[hash]->key_size) != 0)
+        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+
+    map->len = (map->entries[hash]) ? map->len : map->len + 1; // if entry is being overridden do not increase length
     map->entries[hash] = entry;
-    map->len++;
     return 0;
 }
 

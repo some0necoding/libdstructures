@@ -19,6 +19,7 @@ void test_hmap_add_heap_ptr()
     assert(map->len == 1);
     assert(expected == actual);
     assert(strcmp(expected, actual) == 0);
+    hmap_free(map);
 }
 
 void test_hmap_add_stack_ptr()
@@ -32,6 +33,7 @@ void test_hmap_add_stack_ptr()
     assert(ret == 0);
     assert(map->len == 1);
     assert(strcmp("ciao", actual) == 0);
+    hmap_free(map);
 }
 
 void test_hmap_add_8()
@@ -46,6 +48,7 @@ void test_hmap_add_8()
     assert(ret == 0);
     assert(map->len == 1);
     assert(expected == actual);
+    hmap_free(map);
 }
 
 void test_hmap_add_16()
@@ -60,6 +63,7 @@ void test_hmap_add_16()
     assert(ret == 0);
     assert(map->len == 1);
     assert(expected == actual);
+    hmap_free(map);
 }
 
 void test_hmap_add_32()
@@ -74,6 +78,7 @@ void test_hmap_add_32()
     assert(ret == 0);
     assert(map->len == 1);
     assert(expected == actual);
+    hmap_free(map);
 }
 
 void test_hmap_add_64()
@@ -88,6 +93,38 @@ void test_hmap_add_64()
     assert(ret == 0);
     assert(map->len == 1);
     assert(expected == actual);
+    hmap_free(map);
+}
+
+void test_hmap_add_str_key()
+{
+    hmap* map = hmap_new(4096);
+    assert(map->cap == 4096);
+    char* key = "key";
+    uint8_t expected = 57;
+    hmap_put8(map, &key, strlen(key), expected);
+    uint8_t actual;
+    uint8_t ret = hmap_get8(map, &key, strlen(key), &actual);
+    assert(ret == 0);
+    assert(map->len == 1);
+    assert(expected == actual);
+    hmap_free(map);
+}
+
+void test_hmap_add_duplicate_key()
+{
+    hmap* map = hmap_new(4096);
+    assert(map->cap == 4096);
+    char* key = "key";
+    hmap_put8(map, &key, strlen(key), 42);
+    uint8_t expected = 57;
+    hmap_put8(map, &key, strlen(key), expected);
+    uint8_t actual;
+    uint8_t ret = hmap_get8(map, &key, strlen(key), &actual);
+    assert(ret == 0);
+    assert(map->len == 1);
+    assert(expected == actual);
+    hmap_free(map);
 }
 
 void test_hmap_remove()
@@ -102,6 +139,7 @@ void test_hmap_remove()
     uint8_t ret = hmap_get64(map, &key, sizeof(uint32_t), &actual);
     assert(ret != 0);
     assert(map->len == 0);
+    hmap_free(map);
 }
 
 void test_hmap_rehash()
@@ -131,5 +169,7 @@ void test_hmap_rehash()
         assert(ret == 0);
         assert(p.value == actual);
     }
+
+    hmap_free(map);
 }
 
