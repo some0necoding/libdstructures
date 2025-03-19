@@ -2,8 +2,14 @@
 
 Library of (more) complex data structures written in C.
  - Dynamic Arrays
+ - Hashmaps
  - Linked Lists
  - Doubly Linked Lists
  - Circular Linked Lists
  - Queue
  - Stack
+
+- [ ] fix[hmap]: all key comparison should also check for string length equality, otherwise bitstrings with the same prefix but
+      different lengths would be considered equal.
+- [ ] fix[hmap]: hmap_free should also free all entries and their key field which are all heap allocated
+- [ ] fix[hmap]: all hmap functions should return uint8_t (or uint32_t?) return values
