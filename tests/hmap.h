@@ -9,3 +9,4 @@ void test_hmap_remove();
 void test_hmap_rehash();
 void test_hmap_add_str_key();
 void test_hmap_add_duplicate_key();
+void test_hmap_entries();
