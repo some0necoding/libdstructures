@@ -265,6 +265,64 @@ int hmap_remove(hmap* map, void* key, size_t key_size)
     return 0;
 }
 
+uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
+{
+    *entries_size = map->len;
+    *entries = calloc(map->len, sizeof(hmap_entry*));
+    if (!*entries) {
+        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                __LINE__, errno);
+        return EXIT_FAILURE;
+    }
+
+    uint64_t next = 0;
+    for (int i = 0; i < map->cap; i++) {
+        if (!map->entries[i]) continue;
+
+        hmap_entry* old_entry = map->entries[i];
+        hmap_entry* new_entry = calloc(1, sizeof(hmap_entry));
+        if (!new_entry) {
+            fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                    __LINE__, errno);
+            return EXIT_FAILURE;
+        }
+
+
+        new_entry->key_size = old_entry->key_size;
+        new_entry->key = calloc(new_entry->key_size, 1);
+        if (!new_entry->key) {
+            fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                    __LINE__, errno);
+            return EXIT_FAILURE;
+        }
+
+        memcpy(new_entry->key, old_entry->key, new_entry->key_size);
+        new_entry->type = old_entry->type;
+
+        switch (old_entry->type) {
+            case PTR:
+                new_entry->value_ptr = old_entry->value_ptr;
+                break;
+            case BIT_8:
+                new_entry->value_8 = old_entry->value_8;
+                break;
+            case BIT_16:
+                new_entry->value_16 = old_entry->value_16;
+                break;
+            case BIT_32:
+                new_entry->value_32 = old_entry->value_32;
+                break;
+            case BIT_64:
+                new_entry->value_64 = old_entry->value_64;
+                break;
+        }
+
+        (*entries)[next++] = new_entry;
+    }
+
+    return 0;
+}
+
 void hmap_free(hmap* map)
 {
     free(map->entries);

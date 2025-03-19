@@ -1,9 +1,11 @@
 #include "hmap.h"
 #include "../src/hmap.h"
+#include <stddef.h>
 #include <stdint.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 void test_hmap_add_heap_ptr()
 {
@@ -151,23 +153,63 @@ void test_hmap_rehash()
         { .key = 36, .value = 68 },
         { .key = 73, .value = 39 },
     };
+    size_t expected_size = sizeof(expected) / sizeof(struct pair);
 
     hmap* map = hmap_new(2);
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < expected_size; i++) {
         struct pair p = expected[i];
         hmap_put8(map, &p.key, sizeof(uint32_t), p.value);
     }
 
-    assert(map->len == 3);
+    assert(map->len == expected_size);
     assert(map->cap == 4);
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < expected_size; i++) {
         struct pair p = expected[i];
         uint8_t actual;
         uint8_t ret = hmap_get8(map, &p.key, sizeof(uint32_t), &actual);
         assert(ret == 0);
         assert(p.value == actual);
+    }
+
+    hmap_free(map);
+}
+
+void test_hmap_entries()
+{
+    struct pair { char* key; uint8_t value; };
+
+    struct pair expected[] = {
+        { .key = "key1", .value = 15 },
+        { .key = "key2", .value = 68 },
+        { .key = "key3", .value = 39 },
+    };
+    size_t expected_size = sizeof(expected) / sizeof(struct pair);
+
+    hmap* map = hmap_new(4096);
+    assert(map->cap == 4096);
+
+    for (int i = 0; i < expected_size; i++) {
+        struct pair p = expected[i];
+        hmap_put8(map, p.key, strlen(p.key), p.value);
+    }
+
+    hmap_entry** entries;
+    size_t entries_size;
+    uint8_t ret = hmap_entries(map, &entries, &entries_size);
+
+    assert(entries_size == expected_size);
+    for (int i = 0; i < entries_size; i++) {
+        hmap_entry* entry = entries[i];
+        bool found = false;
+        struct pair exp;
+        for (int j = 0; j < expected_size && !found; j++) {
+            exp = expected[j];
+            if (strlen(exp.key) == entry->key_size && memcmp(exp.key, entry->key, entry->key_size) == 0) found = true;
+        }
+        assert(found == true);
+        assert(exp.value == entry->value_8);
     }
 
     hmap_free(map);

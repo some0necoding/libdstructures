@@ -14,7 +14,7 @@ enum value_type {
 
 
 typedef struct {
-    void* key;  // consider using a defined type (would like to have both integers and strings)
+    void* key;
     size_t key_size;
     enum value_type type;
     union {
@@ -49,4 +49,17 @@ uint8_t  hmap_get32 (hmap* map, void* key, size_t key_size, uint32_t* value);
 uint8_t  hmap_get64 (hmap* map, void* key, size_t key_size, uint64_t* value);
 
 int  hmap_remove(hmap* map, void* key, size_t key_size);
+
+/**
+ * Return a copy of all entries of the map in a dense array. The returned array,
+ * the hmap_entry structs it contains, the key field of each hmap_entry struct
+ * are all heap allocated and should be freed after use.
+ *
+ * @param map           the map from which entries will be extracted
+ * @param entries       pointer to an array of pointers to hmap_entry structs. It
+ *                      will be allocated by the function.
+ * @param entries_size  size of the entries array. Its initial value is ignored.
+ */
+uint8_t hmap_entries(hmap* map, hmap_entry*** entries, size_t* entries_size);
+
 void hmap_free(hmap* map);

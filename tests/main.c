@@ -19,6 +19,7 @@ int main(int argc, char *argv[])
     test_hmap_remove();
     test_hmap_rehash();
     test_hmap_add_duplicate_key();
+    test_hmap_entries();
 
     return EXIT_SUCCESS;
 }
