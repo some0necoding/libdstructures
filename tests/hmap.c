@@ -214,4 +214,3 @@ void test_hmap_entries()
 
     hmap_free(map);
 }
-
