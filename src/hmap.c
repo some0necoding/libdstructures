@@ -17,6 +17,7 @@ static long long roundnextpow2(long long v);
 static float load_factor(hmap* map);
 static int hmap_put_entry(hmap* map, hmap_entry* entry);
 static int rehash(hmap* map, size_t newsize);
+static bool keys_equal(void* key1, size_t key1_size, void* key2, size_t key2_size);
 
 hmap* hmap_new(size_t size)
 {
@@ -134,12 +135,17 @@ uint8_t hmap_put64(hmap* map, void* key, size_t key_size, uint64_t value)
 static int hmap_put_entry(hmap* map, hmap_entry* entry)
 {
     uint32_t hash = map->hash(entry->key, entry->key_size) % map->cap;
-    while (map->entries[hash] && memcmp(map->entries[hash]->key, entry->key, map->entries[hash]->key_size) != 0)
+    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, entry->key, entry->key_size))
         hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
 
     map->len = (map->entries[hash]) ? map->len : map->len + 1; // if entry is being overridden do not increase length
     map->entries[hash] = entry;
     return 0;
+}
+
+static bool keys_equal(void* key1, size_t key1_size, void* key2, size_t key2_size)
+{
+    return (key1_size == key2_size && memcmp(key1, key2, key1_size) == 0);
 }
 
 static float load_factor(hmap* map)
@@ -185,7 +191,8 @@ static int rehash(hmap* map, size_t newsize)
 static uint8_t hmap_get(hmap* map, void* key, size_t key_size, void** value)
 {
     uint32_t hash = map->hash(key, key_size) % map->cap;
-    while (map->entries[hash] && memcmp(map->entries[hash]->key, key, key_size) != 0) hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
+        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
     hmap_entry* entry = map->entries[hash];
     if (!entry) return 1;
 
@@ -257,7 +264,8 @@ uint8_t hmap_get64(hmap* map, void* key, size_t key_size, uint64_t* value)
 int hmap_remove(hmap* map, void* key, size_t key_size)
 {
     uint32_t hash = map->hash(key, key_size) % map->cap;
-    while (map->entries[hash] && memcmp(map->entries[hash]->key, key, key_size) != 0) hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
+        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
     free(map->entries[hash]->key);
     free(map->entries[hash]);
     map->entries[hash] = NULL;
