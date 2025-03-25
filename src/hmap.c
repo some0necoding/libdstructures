@@ -261,7 +261,7 @@ uint8_t hmap_get64(hmap* map, void* key, size_t key_size, uint64_t* value)
     return ret;
 }
 
-int hmap_remove(hmap* map, void* key, size_t key_size)
+uint8_t hmap_remove(hmap* map, void* key, size_t key_size)
 {
     uint32_t hash = map->hash(key, key_size) % map->cap;
     while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
