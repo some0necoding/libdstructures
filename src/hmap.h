@@ -48,7 +48,7 @@ uint8_t  hmap_get16 (hmap* map, void* key, size_t key_size, uint16_t* value);
 uint8_t  hmap_get32 (hmap* map, void* key, size_t key_size, uint32_t* value);
 uint8_t  hmap_get64 (hmap* map, void* key, size_t key_size, uint64_t* value);
 
-int  hmap_remove(hmap* map, void* key, size_t key_size);
+uint8_t  hmap_remove(hmap* map, void* key, size_t key_size);
 
 /**
  * Return a copy of all entries of the map in a dense array. The returned array,
