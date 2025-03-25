@@ -333,6 +333,13 @@ uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
 
 void hmap_free(hmap* map)
 {
+    for (uint32_t i = 0; i < map->cap; i++) {
+        hmap_entry* entry = map->entries[i];
+        if (entry) {
+            free(entry->key);
+            free(entry);
+        }
+    }
     free(map->entries);
     free(map);
 }
