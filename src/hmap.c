@@ -269,8 +269,10 @@ uint8_t hmap_remove(hmap* map, void* key, size_t key_size)
     uint32_t hash = map->hash(key, key_size) % map->cap;
     while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
         hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
-    free(map->entries[hash]->key);
-    free(map->entries[hash]);
+    hmap_entry* entry = map->entries[hash];
+    if (!entry) return 1;
+    free(entry->key);
+    free(entry);
     map->entries[hash] = NULL;
     map->len--;
     return 0;

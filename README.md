@@ -14,5 +14,5 @@ Library of (more) complex data structures written in C.
 - [x] fix[hmap]: hmap_free should also free all entries and their key field which are all heap allocated
 - [x] fix[hmap]: all hmap functions should return uint8_t (or uint32_t?) return values
 - [x] docs[hmap]: write contracts for exposed methods
-- [ ] fix[hmap]: hmap_remove does not check for entry existance and could try to access key field on a NULL pointer
+- [x] fix[hmap]: hmap_remove does not check for entry existance and could try to access key field on a NULL pointer
 - [ ] perf[hmap]: hmap_remove does not resize the table when needed (the halving part in doubling-halving paradigm)

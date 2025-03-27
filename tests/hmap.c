@@ -144,6 +144,17 @@ void test_hmap_remove()
     hmap_free(map);
 }
 
+void test_hmap_remove_unexistent_key()
+{
+    hmap* map = hmap_new(4096);
+    assert(map->cap == 4096);
+    uint32_t key = 42;
+    uint8_t ret = hmap_remove(map, &key, sizeof(uint32_t));
+    assert(ret != 0);
+    assert(map->len == 0);
+    hmap_free(map);
+}
+
 void test_hmap_rehash()
 {
     struct pair { uint32_t key; uint8_t value; };

@@ -108,7 +108,8 @@ uint8_t  hmap_get64 (hmap* map, void* key, size_t key_size, uint64_t* value);
  * @param map the map to remove from
  * @param key pointer to the memory region that contains the key to lookup for
  * @param key_size size of the memory region that contains the key to lookup for
- * @return 0 no error
+ * @return 0 no error;
+ *         1 key not found
  */
 uint8_t  hmap_remove(hmap* map, void* key, size_t key_size);
 
