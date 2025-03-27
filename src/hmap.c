@@ -6,17 +6,21 @@
 #include <errno.h>
 #include <string.h>
 
-/*
- * Generic hashmap implementation that uses the murmur3 hash function. Collisions
- * are handled with linear probing, but is meant to be replaced with double hashing.
- * The hashmap are dynamically resized following the doubling-halving schema.
- */
-
 static uint32_t murmur3_32(const void* data, size_t msize);
 static long long roundnextpow2(long long v);
 static float load_factor(hmap* map);
-static int hmap_put_entry(hmap* map, hmap_entry* entry);
-static int rehash(hmap* map, size_t newsize);
+static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry);
+
+/**
+ * Rehash map to reset its size to newsize.
+ *
+ * @param map the map to rehash
+ * @param newsize the new size of the map
+ * @return 0 if no error occurs;
+ *         1 if memory allocation fails;
+ *         2 if newsize is less than the current number of entries in the map.
+ */
+static uint8_t rehash(hmap* map, size_t newsize);
 static bool keys_equal(void* key1, size_t key1_size, void* key2, size_t key2_size);
 
 hmap* hmap_new(size_t size)
@@ -58,9 +62,10 @@ static long long roundnextpow2(long long v)
 static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum value_type type)
 {
     if (load_factor(map) > .5) {
-        if (rehash(map, map->cap * 2) < 0) {
+        int ret = rehash(map, map->cap * 2);
+        if (ret > 0) {
             fprintf(stderr, "%s:%d: cannot rehash table\n", __FILE__, __LINE__);
-            return -1;
+            return ret;
         }
     }
 
@@ -68,7 +73,7 @@ static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum
     if (!entry) {
         fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
                 __LINE__, errno);
-        return -1;
+        return 1;
     }
 
     entry->key_size = key_size;
@@ -76,7 +81,7 @@ static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum
     if (!entry->key) {
         fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
                 __LINE__, errno);
-        return -1;
+        return 1;
     }
 
     memcpy(entry->key, key, entry->key_size);
@@ -132,7 +137,7 @@ uint8_t hmap_put64(hmap* map, void* key, size_t key_size, uint64_t value)
     return hmap_put(map, key, key_size, &value, BIT_64);
 }
 
-static int hmap_put_entry(hmap* map, hmap_entry* entry)
+static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry)
 {
     uint32_t hash = map->hash(entry->key, entry->key_size) % map->cap;
     while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, entry->key, entry->key_size))
@@ -153,12 +158,12 @@ static float load_factor(hmap* map)
     return (float) map->len / (float) map->cap;
 }
 
-static int rehash(hmap* map, size_t newsize)
+static uint8_t rehash(hmap* map, size_t newsize)
 {
     if (newsize < map->len) {
         fprintf(stderr, "%s:%d: size is less than number of entries\n", __FILE__,
                 __LINE__);
-        return -1;
+        return 2;
     }
 
     hmap_entry** old_table = map->entries;
@@ -167,7 +172,7 @@ static int rehash(hmap* map, size_t newsize)
     if (!map->entries) {
         fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
                 __LINE__, errno);
-        return -1;
+        return 1;
     }
 
     map->cap = newsize;
@@ -175,12 +180,7 @@ static int rehash(hmap* map, size_t newsize)
 
     for (int i = 0; i < old_cap; i++) {
         hmap_entry* entry = old_table[i];
-        if (!entry) continue;
-        if (hmap_put_entry(map, entry) < 0) {
-            fprintf(stderr, "%s:%d: cannot rehash entry\n", __FILE__, __LINE__,
-                    errno);
-            return -1;
-        }
+        if (entry) hmap_put_entry(map, entry);
     }
 
     free(old_table);
@@ -280,7 +280,7 @@ uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
     if (!*entries) {
         fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
                 __LINE__, errno);
-        return EXIT_FAILURE;
+        return 1;
     }
 
     uint64_t next = 0;
@@ -292,7 +292,7 @@ uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
         if (!new_entry) {
             fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
                     __LINE__, errno);
-            return EXIT_FAILURE;
+            return 1;
         }
 
 
@@ -301,7 +301,7 @@ uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
         if (!new_entry->key) {
             fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
                     __LINE__, errno);
-            return EXIT_FAILURE;
+            return 1;
         }
 
         memcpy(new_entry->key, old_entry->key, new_entry->key_size);
