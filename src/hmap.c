@@ -6,17 +6,21 @@
 #include <errno.h>
 #include <string.h>
 
-/*
- * Generic hashmap implementation that uses the murmur3 hash function. Collisions
- * are handled with linear probing, but is meant to be replaced with double hashing.
- * The hashmap are dynamically resized following the doubling-halving schema.
- */
-
 static uint32_t murmur3_32(const void* data, size_t msize);
 static long long roundnextpow2(long long v);
 static float load_factor(hmap* map);
-static int hmap_put_entry(hmap* map, hmap_entry* entry);
-static int rehash(hmap* map, size_t newsize);
+static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry);
+
+/**
+ * Rehash map to reset its size to newsize.
+ *
+ * @param map the map to rehash
+ * @param newsize the new size of the map
+ * @return 0 if no error occurs;
+ *         1 if memory allocation fails;
+ *         2 if newsize is less than the current number of entries in the map.
+ */
+static uint8_t rehash(hmap* map, size_t newsize);
 static bool keys_equal(void* key1, size_t key1_size, void* key2, size_t key2_size);
 
 hmap* hmap_new(size_t size)
