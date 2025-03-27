@@ -227,6 +227,7 @@ uint8_t hmap_get8(hmap* map, void* key, size_t key_size, uint8_t* value)
     // is the stack address we need to return the value to the user.
     uint8_t* _value;
     uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
+    if (ret == 0) *value = *_value;
     *value = *_value;
     return ret;
 }
@@ -237,6 +238,7 @@ uint8_t hmap_get16(hmap* map, void* key, size_t key_size, uint16_t* value)
     // is the stack address we need to return the value to the user.
     uint16_t* _value;
     uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
+    if (ret == 0) *value = *_value;
     *value = *_value;
     return ret;
 }
@@ -247,6 +249,7 @@ uint8_t hmap_get32(hmap* map, void* key, size_t key_size, uint32_t* value)
     // is the stack address we need to return the value to the user.
     uint32_t* _value;
     uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
+    if (ret == 0) *value = *_value;
     *value = *_value;
     return ret;
 }
@@ -257,7 +260,7 @@ uint8_t hmap_get64(hmap* map, void* key, size_t key_size, uint64_t* value)
     // is the stack address we need to return the value to the user.
     uint64_t* _value;
     uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
-    *value = *_value;
+    if (ret == 0) *value = *_value;
     return ret;
 }
 
