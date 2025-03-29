@@ -41,8 +41,7 @@ typedef struct {
 
 /**
  * Represents a hashmap instance. It contains a reference to the hash function
- * used (murmur3) and the dynamic array that contains the entries. This array
- * is dynamically resized using the doubling-halving paradigm.
+ * used (murmur3) and the dynamic array that contains the entries.
  * Collisions are handled with linear probing.
  */
 typedef struct {
