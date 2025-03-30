@@ -1,0 +1,27 @@
+#include "dynarr.h"
+#include "hmap.h"
+#include <stdlib.h>
+
+int main(int argc, char *argv[])
+{
+    test_dynarr_add();
+    test_dynarr_add_with_reallocation();
+    test_dynarr_set();
+    test_dynarr_size();
+
+    test_hmap_add_heap_ptr();
+    test_hmap_add_stack_ptr();
+    test_hmap_add_8();
+    test_hmap_add_16();
+    test_hmap_add_32();
+    test_hmap_add_64();
+    test_hmap_add_str_key();
+    test_hmap_remove();
+    test_hmap_rehash();
+    test_hmap_add_duplicate_key();
+    test_hmap_entries();
+    test_hmap_remove_unexistent_key();
+    test_hmap_remove_with_collisions();
+
+    return EXIT_SUCCESS;
+}

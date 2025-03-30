@@ -1,9 +1,6 @@
-# Data Structures in C
+# C Data Structures
 
-Library of (more) complex data structures written in C.  
- - Dynamic Arrays
- - Linked Lists
- - Doubly Linked Lists
- - Circular Linked Lists
- - Queue
- - Stack
+Library of generic-ish data structures written in C.
+
+ - Dynamic Arrays (`dynarr.h`)
+ - Hashmaps (`hmap.h`)

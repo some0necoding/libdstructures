@@ -1,0 +1,463 @@
+#include "hmap.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+
+static uint32_t murmur3_32(const void* data, size_t msize);
+static long long roundnextpow2(long long v);
+static float load_factor(hmap* map);
+static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry);
+
+/**
+ * Rehash map to reset its size to newsize.
+ *
+ * @param map the map to rehash
+ * @param newsize the new size of the map
+ * @return 0 if no error occurs;
+ *         1 if memory allocation fails;
+ *         2 if newsize is less than the current number of entries in the map.
+ */
+static uint8_t rehash(hmap* map, size_t newsize);
+static bool keys_equal(const void* key1, size_t key1_size, const void* key2, size_t key2_size);
+static void compact_cluster(hmap* map, uint32_t empty_slot);
+static bool overflow(uint32_t start, uint32_t end);
+static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t hash);
+static uint32_t find_slot(hmap* map, const void* key, size_t key_size);
+
+hmap* hmap_new(size_t size)
+{
+    size = roundnextpow2(size);
+
+    hmap* map = calloc(1, sizeof(hmap));
+    if (!map) {
+        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                __LINE__, errno);
+        return NULL;
+    }
+
+    map->entries = calloc(size, sizeof(hmap_entry*));
+    if (!map->entries) {
+        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                __LINE__, errno);
+        return NULL;
+    }
+
+    map->cap = size;
+    map->len = 0;
+    map->hash = murmur3_32;
+
+    return map;
+}
+
+static long long roundnextpow2(long long v)
+{
+    size_t size = sizeof(long long);
+    v--;
+    for (int power = 1; power < size; power *= 2) {
+        v |= v >> power;
+    }
+    v++;
+    return v;
+}
+
+static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum value_type type)
+{
+    if (load_factor(map) > .5) {
+        int ret = rehash(map, map->cap * 2);
+        if (ret > 0) {
+            fprintf(stderr, "%s:%d: cannot rehash table\n", __FILE__, __LINE__);
+            return ret;
+        }
+    }
+
+    hmap_entry* entry = calloc(1, sizeof(hmap_entry));
+    if (!entry) {
+        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                __LINE__, errno);
+        return 1;
+    }
+
+    entry->key_size = key_size;
+    entry->key = calloc(entry->key_size, 1);
+    if (!entry->key) {
+        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                __LINE__, errno);
+        return 1;
+    }
+
+    memcpy(entry->key, key, entry->key_size);
+
+    switch (type) {
+        case PTR:
+            entry->value_ptr = value;
+            entry->type = PTR;
+            break;
+        case BIT_8:
+            entry->value_8 = *(uint8_t*) value;
+            entry->type = BIT_8;
+            break;
+        case BIT_16:
+            entry->value_16 = *(uint16_t*) value;
+            entry->type = BIT_16;
+            break;
+        case BIT_32:
+            entry->value_32 = *(uint32_t*) value;
+            entry->type = BIT_32;
+            break;
+        case BIT_64:
+            entry->value_64 = *(uint64_t*) value;
+            entry->type = BIT_64;
+            break;
+    }
+
+    return hmap_put_entry(map, entry);
+}
+
+uint8_t hmap_putptr(hmap* map, void* key, size_t key_size, void* value)
+{
+    return hmap_put(map, key, key_size, value, PTR);
+}
+
+uint8_t hmap_put8(hmap* map, void* key, size_t key_size, uint8_t value)
+{
+    return hmap_put(map, key, key_size, &value, BIT_8);
+}
+
+uint8_t hmap_put16(hmap* map, void* key, size_t key_size, uint16_t value)
+{
+    return hmap_put(map, key, key_size, &value, BIT_16);
+}
+
+uint8_t hmap_put32(hmap* map, void* key, size_t key_size, uint32_t value)
+{
+    return hmap_put(map, key, key_size, &value, BIT_32);
+}
+
+uint8_t hmap_put64(hmap* map, void* key, size_t key_size, uint64_t value)
+{
+    return hmap_put(map, key, key_size, &value, BIT_64);
+}
+
+static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry)
+{
+    const uint32_t hash = find_slot(map, entry->key, entry->key_size);
+    map->len = (map->entries[hash]) ? map->len : map->len + 1; // if entry is being overridden do not increase length
+    map->entries[hash] = entry;
+    return 0;
+}
+
+static uint32_t find_slot(hmap* map, const void* key, size_t key_size)
+{
+    uint32_t hash = map->hash(key, key_size) % map->cap;
+    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
+        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    return hash;
+}
+
+static bool keys_equal(const void* key1, size_t key1_size, const void* key2, size_t key2_size)
+{
+    return (key1_size == key2_size && memcmp(key1, key2, key1_size) == 0);
+}
+
+static float load_factor(hmap* map)
+{
+    return (float) map->len / (float) map->cap;
+}
+
+static uint8_t rehash(hmap* map, size_t newsize)
+{
+    if (newsize < map->len) {
+        fprintf(stderr, "%s:%d: size is less than number of entries\n", __FILE__,
+                __LINE__);
+        return 2;
+    }
+
+    hmap_entry** old_table = map->entries;
+    size_t old_cap = map->cap;
+    map->entries = calloc(newsize, sizeof(hmap_entry*));
+    if (!map->entries) {
+        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                __LINE__, errno);
+        return 1;
+    }
+
+    map->cap = newsize;
+    map->len = 0;
+
+    for (int i = 0; i < old_cap; i++) {
+        hmap_entry* entry = old_table[i];
+        if (entry) hmap_put_entry(map, entry);
+    }
+
+    free(old_table);
+
+    return 0;
+}
+
+static uint8_t hmap_get(hmap* map, void* key, size_t key_size, void** value)
+{
+    const uint32_t hash = find_slot(map, key, key_size);
+    hmap_entry* entry = map->entries[hash];
+    if (!entry) return 1;
+
+    switch (entry->type) {
+        case PTR:
+            *value = map->entries[hash]->value_ptr;
+            break;
+        case BIT_8:
+            *value = &map->entries[hash]->value_8;
+            break;
+        case BIT_16:
+            *value = &map->entries[hash]->value_16;
+            break;
+        case BIT_32:
+            *value = &map->entries[hash]->value_32;
+            break;
+        case BIT_64:
+            *value = &map->entries[hash]->value_64;
+            break;
+    }
+    return 0;
+}
+
+uint8_t hmap_getptr(hmap* map, void* key, size_t key_size, void** value)
+{
+    return hmap_get(map, key, key_size, value);
+}
+
+uint8_t hmap_get8(hmap* map, void* key, size_t key_size, uint8_t* value)
+{
+    // directly passing &value to hmap_get would override value, which
+    // is the stack address we need to return the value to the user.
+    uint8_t* _value;
+    uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
+    if (ret == 0) *value = *_value;
+    *value = *_value;
+    return ret;
+}
+
+uint8_t hmap_get16(hmap* map, void* key, size_t key_size, uint16_t* value)
+{
+    // directly passing &value to hmap_get would override value, which
+    // is the stack address we need to return the value to the user.
+    uint16_t* _value;
+    uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
+    if (ret == 0) *value = *_value;
+    *value = *_value;
+    return ret;
+}
+
+uint8_t hmap_get32(hmap* map, void* key, size_t key_size, uint32_t* value)
+{
+    // directly passing &value to hmap_get would override value, which
+    // is the stack address we need to return the value to the user.
+    uint32_t* _value;
+    uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
+    if (ret == 0) *value = *_value;
+    *value = *_value;
+    return ret;
+}
+
+uint8_t hmap_get64(hmap* map, void* key, size_t key_size, uint64_t* value)
+{
+    // directly passing &value to hmap_get would override value, which
+    // is the stack address we need to return the value to the user.
+    uint64_t* _value;
+    uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
+    if (ret == 0) *value = *_value;
+    return ret;
+}
+
+uint8_t hmap_remove(hmap* map, void* key, size_t key_size)
+{
+    const uint32_t hash = find_slot(map, key, key_size);
+    hmap_entry* entry = map->entries[hash];
+    if (!entry) return 1;
+    free(entry->key);
+    free(entry);
+    map->entries[hash] = NULL;
+    map->len--;
+    compact_cluster(map, hash);
+    return 0;
+}
+
+/**
+ * If an entry inside a cluster (probe sequence of collided entries, i.e. with
+ * the same hash) is deleted, it causes the probe to stop even if beyond it
+ * there are other elements of the same cluster.
+ *
+ * e.g. (linear probing)
+ *
+ * given a1 a2 a3 entries with different keys but same hash:
+ *
+ * ... a1 a2 a3 ...
+ *
+ * after deleting a2:
+ *
+ * ... a1 xx a3 ...
+ *        ^
+ * probe stops here and a3 is unreachable
+ *
+ * For this reason the cluster should be compacted. An entry is in the right
+ * position (i.e. in a different cluster) if it's hash lies between the deleted
+ * slot index and its current slot index (also considering index overflow).
+ * If an entry is not in the right position it is moved in the currently empty
+ * slot and its slot is marked as the new empty.
+ *
+ * right position:
+ *  if (empty <= slot) |           empty..hash..slot            |
+ *  if (slot < empty)  |.hash..slot                 empty.......| or
+ *                     |.......slot                 empty..hash.|
+ */
+static void compact_cluster(hmap* map, uint32_t empty_slot)
+{
+    for (uint32_t slot = (empty_slot + 1) % map->cap; map->entries[slot]; slot = (slot + 1) % map->cap) {
+        hmap_entry* entry = map->entries[slot];
+        uint32_t hash = map->hash(entry->key, entry->key_size);
+        if (different_cluster(empty_slot, slot, hash)) continue;
+        map->entries[empty_slot] = entry;
+        map->entries[slot] = NULL;
+        empty_slot = slot;
+    }
+}
+
+static bool overflow(uint32_t start, uint32_t end) { return start > end; }
+
+static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t hash)
+{
+    if (!overflow(empty_slot, curr_slot))
+        return empty_slot < hash && hash <= curr_slot;
+    return hash <= curr_slot || empty_slot < hash;
+}
+
+uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
+{
+    *entries_size = map->len;
+    *entries = calloc(map->len, sizeof(hmap_entry*));
+    if (!*entries) {
+        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                __LINE__, errno);
+        return 1;
+    }
+
+    uint64_t next = 0;
+    for (int i = 0; i < map->cap; i++) {
+        if (!map->entries[i]) continue;
+
+        hmap_entry* old_entry = map->entries[i];
+        hmap_entry* new_entry = calloc(1, sizeof(hmap_entry));
+        if (!new_entry) {
+            fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                    __LINE__, errno);
+            return 1;
+        }
+
+
+        new_entry->key_size = old_entry->key_size;
+        new_entry->key = calloc(new_entry->key_size, 1);
+        if (!new_entry->key) {
+            fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
+                    __LINE__, errno);
+            return 1;
+        }
+
+        memcpy(new_entry->key, old_entry->key, new_entry->key_size);
+        new_entry->type = old_entry->type;
+
+        switch (old_entry->type) {
+            case PTR:
+                new_entry->value_ptr = old_entry->value_ptr;
+                break;
+            case BIT_8:
+                new_entry->value_8 = old_entry->value_8;
+                break;
+            case BIT_16:
+                new_entry->value_16 = old_entry->value_16;
+                break;
+            case BIT_32:
+                new_entry->value_32 = old_entry->value_32;
+                break;
+            case BIT_64:
+                new_entry->value_64 = old_entry->value_64;
+                break;
+        }
+
+        (*entries)[next++] = new_entry;
+    }
+
+    return 0;
+}
+
+void hmap_free(hmap* map)
+{
+    for (uint32_t i = 0; i < map->cap; i++) {
+        hmap_entry* entry = map->entries[i];
+        if (entry) {
+            free(entry->key);
+            free(entry);
+        }
+    }
+    free(map->entries);
+    free(map);
+}
+
+/*
+ * MurmurHash3 has been created by Austin Appleby and the original code is
+ * available in C++ (https://github.com/aappleby/smhasher/).
+ * This C port has been created by Seungyoung Kim and has been published as
+ * part of qLibc (https://github.com/wolkykim/qlibc).
+ */
+static uint32_t murmur3_32(const void* data, size_t dsize)
+{
+    if (data == NULL || dsize == 0) return 0;
+
+    const uint32_t c1 = 0xcc9e2d51;
+    const uint32_t c2 = 0x1b873593;
+
+    const int nblocks = dsize / 4;
+    const uint32_t *blocks = (const uint32_t *) (data);
+    const uint8_t *tail = (const uint8_t *) (data + (nblocks * 4));
+
+    uint32_t h = 0;
+
+    int i;
+    uint32_t k;
+    for (i = 0; i < nblocks; i++) {
+        k = blocks[i];
+
+        k *= c1;
+        k = (k << 15) | (k >> (32 - 15));
+        k *= c2;
+
+        h ^= k;
+        h = (h << 13) | (h >> (32 - 13));
+        h = (h * 5) + 0xe6546b64;
+    }
+
+    k = 0;
+    switch (dsize & 3) {
+        case 3:
+            k ^= tail[2] << 16;
+        case 2:
+            k ^= tail[1] << 8;
+        case 1:
+            k ^= tail[0];
+            k *= c1;
+            k = (k << 15) | (k >> (32 - 15));
+            k *= c2;
+            h ^= k;
+    };
+
+    h ^= dsize;
+
+    h ^= h >> 16;
+    h *= 0x85ebca6b;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35;
+    h ^= h >> 16;
+
+    return h;
+}
