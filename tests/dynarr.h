@@ -1,4 +1,13 @@
-void test_dynarr_add();
-void test_dynarr_add_with_reallocation();
-void test_dynarr_set();
+void test_dynarr_append_ptr();
+void test_dynarr_append_8();
+void test_dynarr_append_16();
+void test_dynarr_append_32();
+void test_dynarr_append_64();
+void test_dynarr_append_with_reallocation();
+void test_dynarr_set_ptr();
+void test_dynarr_set_8();
+void test_dynarr_set_16();
+void test_dynarr_set_32();
+void test_dynarr_set_64();
 void test_dynarr_size();
+void test_dynarr_qsort();
