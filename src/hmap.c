@@ -10,6 +10,9 @@ static uint32_t murmur3_32(const void* data, size_t msize);
 static long long roundnextpow2(long long v);
 static float load_factor(hmap* map);
 static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry);
+static void compact_cluster(hmap* map, uint32_t empty_slot);
+static bool overflow(uint32_t start, uint32_t end);
+static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t hash);
 
 /**
  * Rehash map to reset its size to newsize.
@@ -275,7 +278,57 @@ uint8_t hmap_remove(hmap* map, void* key, size_t key_size)
     free(entry);
     map->entries[hash] = NULL;
     map->len--;
+    compact_cluster(map, hash);
     return 0;
+}
+
+/**
+ * If an entry inside a cluster (probe sequence of collided entries, i.e. with
+ * the same hash) is deleted, it causes the probe to stop even if beyond it
+ * there are other elements of the same cluster.
+ *
+ * e.g. (linear probing)
+ *
+ * given a1 a2 a3 entries with different keys but same hash:
+ *
+ * ... a1 a2 a3 ...
+ *
+ * after deleting a2:
+ *
+ * ... a1 xx a3 ...
+ *        ^
+ * probe stops here and a3 is unreachable
+ *
+ * For this reason the cluster should be compacted. An entry is in the right
+ * position (i.e. in a different cluster) if it's hash lies between the deleted
+ * slot index and its current slot index (also considering index overflow).
+ * If an entry is not in the right position it is moved in the currently empty
+ * slot and its slot is marked as the new empty.
+ *
+ * right position:
+ *  if (empty <= slot) |           empty..hash..slot            |
+ *  if (slot < empty)  |.hash..slot                 empty.......| or
+ *                     |.......slot                 empty..hash.|
+ */
+static void compact_cluster(hmap* map, uint32_t empty_slot)
+{
+    for (uint32_t slot = (empty_slot + 1) % map->cap; map->entries[slot]; slot = (slot + 1) % map->cap) {
+        hmap_entry* entry = map->entries[slot];
+        uint32_t hash = map->hash(entry->key, entry->key_size);
+        if (different_cluster(empty_slot, slot, hash)) continue;
+        map->entries[empty_slot] = entry;
+        map->entries[slot] = NULL;
+        empty_slot = slot;
+    }
+}
+
+static bool overflow(uint32_t start, uint32_t end) { return start > end; }
+
+static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t hash)
+{
+    if (!overflow(empty_slot, curr_slot))
+        return empty_slot < hash && hash <= curr_slot;
+    return hash <= curr_slot || empty_slot < hash;
 }
 
 uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
