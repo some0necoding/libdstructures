@@ -30,14 +30,14 @@ static long long roundnextpow2(long long v)
     return v;
 }
 
-int dynarr_add(dynarr* arr, void* elem)
+uint8_t dynarr_add(dynarr* arr, void* elem)
 {
     if (arr->len >= arr->cap - 1) {
         size_t old_cap = arr->cap;
         void* old_arr = arr->arr;
         arr->cap *= 2;
         arr->arr = calloc(arr->cap * 2, sizeof(void*));
-        if (!arr->arr) return -1;
+        if (!arr->arr) return 1;
         memcpy(arr->arr, old_arr, old_cap);
     }
 
@@ -45,25 +45,18 @@ int dynarr_add(dynarr* arr, void* elem)
     return 0;
 }
 
-int dynarr_set(dynarr* arr, size_t i, void* elem)
+uint8_t dynarr_set(dynarr* arr, size_t i, void* elem)
 {
-    if (i < 0 || i >= arr->len) {
-        fprintf(stderr, "%s:%d: index %lu out of bound\n", __FILE__, __LINE__, i);
-        return -1;
-    }
-
+    if (i < 0 || i >= arr->len) return 1;
     arr->arr[i] = elem;
     return 0;
 }
 
-void* dynarr_get(dynarr *arr, size_t i)
+uint8_t dynarr_get(dynarr *arr, size_t i, void** elem)
 {
-    if (i < 0 || i >= arr->len) {
-        fprintf(stderr, "%s:%d: index %lu out of bound\n", __FILE__, __LINE__, i);
-        return NULL;
-    }
-
-    return arr->arr[i];
+    if (i < 0 || i >= arr->len) return 1;
+    *elem = arr->arr[i];
+    return 0;
 }
 
 size_t dynarr_size(dynarr* arr)
