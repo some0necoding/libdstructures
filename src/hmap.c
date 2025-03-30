@@ -10,9 +10,6 @@ static uint32_t murmur3_32(const void* data, size_t msize);
 static long long roundnextpow2(long long v);
 static float load_factor(hmap* map);
 static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry);
-static void compact_cluster(hmap* map, uint32_t empty_slot);
-static bool overflow(uint32_t start, uint32_t end);
-static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t hash);
 
 /**
  * Rehash map to reset its size to newsize.
@@ -24,7 +21,11 @@ static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t 
  *         2 if newsize is less than the current number of entries in the map.
  */
 static uint8_t rehash(hmap* map, size_t newsize);
-static bool keys_equal(void* key1, size_t key1_size, void* key2, size_t key2_size);
+static bool keys_equal(const void* key1, size_t key1_size, const void* key2, size_t key2_size);
+static void compact_cluster(hmap* map, uint32_t empty_slot);
+static bool overflow(uint32_t start, uint32_t end);
+static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t hash);
+static uint32_t find_slot(hmap* map, const void* key, size_t key_size);
 
 hmap* hmap_new(size_t size)
 {
@@ -142,16 +143,21 @@ uint8_t hmap_put64(hmap* map, void* key, size_t key_size, uint64_t value)
 
 static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry)
 {
-    uint32_t hash = map->hash(entry->key, entry->key_size) % map->cap;
-    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, entry->key, entry->key_size))
-        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
-
+    const uint32_t hash = find_slot(map, entry->key, entry->key_size);
     map->len = (map->entries[hash]) ? map->len : map->len + 1; // if entry is being overridden do not increase length
     map->entries[hash] = entry;
     return 0;
 }
 
-static bool keys_equal(void* key1, size_t key1_size, void* key2, size_t key2_size)
+static uint32_t find_slot(hmap* map, const void* key, size_t key_size)
+{
+    uint32_t hash = map->hash(key, key_size) % map->cap;
+    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
+        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    return hash;
+}
+
+static bool keys_equal(const void* key1, size_t key1_size, const void* key2, size_t key2_size)
 {
     return (key1_size == key2_size && memcmp(key1, key2, key1_size) == 0);
 }
@@ -193,9 +199,7 @@ static uint8_t rehash(hmap* map, size_t newsize)
 
 static uint8_t hmap_get(hmap* map, void* key, size_t key_size, void** value)
 {
-    uint32_t hash = map->hash(key, key_size) % map->cap;
-    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
-        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    const uint32_t hash = find_slot(map, key, key_size);
     hmap_entry* entry = map->entries[hash];
     if (!entry) return 1;
 
@@ -269,9 +273,7 @@ uint8_t hmap_get64(hmap* map, void* key, size_t key_size, uint64_t* value)
 
 uint8_t hmap_remove(hmap* map, void* key, size_t key_size)
 {
-    uint32_t hash = map->hash(key, key_size) % map->cap;
-    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
-        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    const uint32_t hash = find_slot(map, key, key_size);
     hmap_entry* entry = map->entries[hash];
     if (!entry) return 1;
     free(entry->key);
