@@ -11,3 +11,4 @@ void test_hmap_add_str_key();
 void test_hmap_add_duplicate_key();
 void test_hmap_entries();
 void test_hmap_remove_unexistent_key();
+void test_hmap_remove_with_collisions();

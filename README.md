@@ -15,6 +15,6 @@ Library of (more) complex data structures written in C.
 - [x] fix[hmap]: all hmap functions should return uint8_t (or uint32_t?) return values
 - [x] docs[hmap]: write contracts for exposed methods
 - [x] fix[hmap]: hmap_remove does not check for entry existance and could try to access key field on a NULL pointer
-- [ ] fix[hmap]: entry deletion does not handle open addressing
+- [x] fix[hmap]: entry deletion does not handle open addressing
 - [x] docs[hmap]: actually the map is not following doubling-halving but only doubling
 - [ ] perf[hmap]: switch to using qudratic probing instead of linear probing

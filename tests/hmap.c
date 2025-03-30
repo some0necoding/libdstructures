@@ -144,6 +144,40 @@ void test_hmap_remove()
     hmap_free(map);
 }
 
+uint32_t collision_generator(const void* data, size_t data_size)
+{
+    uint32_t key = *(uint32_t*) data;
+    if (key == 42) return 1;
+    if (key == 36) return 1;
+    if (key == 73) return 2;
+}
+
+void test_hmap_remove_with_collisions()
+{
+    struct pair { uint32_t key; uint8_t value; };
+
+    struct pair expected[] = {
+        { .key = 42, .value = 15 },
+        { .key = 36, .value = 68 },
+        { .key = 73, .value = 39 },
+    };
+    size_t expected_size = sizeof(expected) / sizeof(struct pair);
+
+    hmap* map = hmap_new(4096);
+
+    for (int i = 0; i < expected_size; i++) {
+        struct pair p = expected[i];
+        hmap_put8(map, &p.key, sizeof(uint32_t), p.value);
+    }
+
+    for (int i = 0; i < expected_size; i++) {
+        struct pair p = expected[i];
+        int ret = hmap_remove(map, &p.key, sizeof(uint32_t));
+        assert(ret == 0);
+        assert(map->len == expected_size - i - 1);
+    }
+}
+
 void test_hmap_remove_unexistent_key()
 {
     hmap* map = hmap_new(4096);

@@ -21,7 +21,11 @@ static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry);
  *         2 if newsize is less than the current number of entries in the map.
  */
 static uint8_t rehash(hmap* map, size_t newsize);
-static bool keys_equal(void* key1, size_t key1_size, void* key2, size_t key2_size);
+static bool keys_equal(const void* key1, size_t key1_size, const void* key2, size_t key2_size);
+static void compact_cluster(hmap* map, uint32_t empty_slot);
+static bool overflow(uint32_t start, uint32_t end);
+static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t hash);
+static uint32_t find_slot(hmap* map, const void* key, size_t key_size);
 
 hmap* hmap_new(size_t size)
 {
@@ -139,16 +143,21 @@ uint8_t hmap_put64(hmap* map, void* key, size_t key_size, uint64_t value)
 
 static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry)
 {
-    uint32_t hash = map->hash(entry->key, entry->key_size) % map->cap;
-    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, entry->key, entry->key_size))
-        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
-
+    const uint32_t hash = find_slot(map, entry->key, entry->key_size);
     map->len = (map->entries[hash]) ? map->len : map->len + 1; // if entry is being overridden do not increase length
     map->entries[hash] = entry;
     return 0;
 }
 
-static bool keys_equal(void* key1, size_t key1_size, void* key2, size_t key2_size)
+static uint32_t find_slot(hmap* map, const void* key, size_t key_size)
+{
+    uint32_t hash = map->hash(key, key_size) % map->cap;
+    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
+        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    return hash;
+}
+
+static bool keys_equal(const void* key1, size_t key1_size, const void* key2, size_t key2_size)
 {
     return (key1_size == key2_size && memcmp(key1, key2, key1_size) == 0);
 }
@@ -190,9 +199,7 @@ static uint8_t rehash(hmap* map, size_t newsize)
 
 static uint8_t hmap_get(hmap* map, void* key, size_t key_size, void** value)
 {
-    uint32_t hash = map->hash(key, key_size) % map->cap;
-    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
-        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    const uint32_t hash = find_slot(map, key, key_size);
     hmap_entry* entry = map->entries[hash];
     if (!entry) return 1;
 
@@ -266,16 +273,64 @@ uint8_t hmap_get64(hmap* map, void* key, size_t key_size, uint64_t* value)
 
 uint8_t hmap_remove(hmap* map, void* key, size_t key_size)
 {
-    uint32_t hash = map->hash(key, key_size) % map->cap;
-    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
-        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    const uint32_t hash = find_slot(map, key, key_size);
     hmap_entry* entry = map->entries[hash];
     if (!entry) return 1;
     free(entry->key);
     free(entry);
     map->entries[hash] = NULL;
     map->len--;
+    compact_cluster(map, hash);
     return 0;
+}
+
+/**
+ * If an entry inside a cluster (probe sequence of collided entries, i.e. with
+ * the same hash) is deleted, it causes the probe to stop even if beyond it
+ * there are other elements of the same cluster.
+ *
+ * e.g. (linear probing)
+ *
+ * given a1 a2 a3 entries with different keys but same hash:
+ *
+ * ... a1 a2 a3 ...
+ *
+ * after deleting a2:
+ *
+ * ... a1 xx a3 ...
+ *        ^
+ * probe stops here and a3 is unreachable
+ *
+ * For this reason the cluster should be compacted. An entry is in the right
+ * position (i.e. in a different cluster) if it's hash lies between the deleted
+ * slot index and its current slot index (also considering index overflow).
+ * If an entry is not in the right position it is moved in the currently empty
+ * slot and its slot is marked as the new empty.
+ *
+ * right position:
+ *  if (empty <= slot) |           empty..hash..slot            |
+ *  if (slot < empty)  |.hash..slot                 empty.......| or
+ *                     |.......slot                 empty..hash.|
+ */
+static void compact_cluster(hmap* map, uint32_t empty_slot)
+{
+    for (uint32_t slot = (empty_slot + 1) % map->cap; map->entries[slot]; slot = (slot + 1) % map->cap) {
+        hmap_entry* entry = map->entries[slot];
+        uint32_t hash = map->hash(entry->key, entry->key_size);
+        if (different_cluster(empty_slot, slot, hash)) continue;
+        map->entries[empty_slot] = entry;
+        map->entries[slot] = NULL;
+        empty_slot = slot;
+    }
+}
+
+static bool overflow(uint32_t start, uint32_t end) { return start > end; }
+
+static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t hash)
+{
+    if (!overflow(empty_slot, curr_slot))
+        return empty_slot < hash && hash <= curr_slot;
+    return hash <= curr_slot || empty_slot < hash;
 }
 
 uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
