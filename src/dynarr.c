@@ -1,42 +1,52 @@
 #include "dynarr.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
+#include <string.h>
 
-dynarr* dynarr_new(size_t size) {
+static long long roundnextpow2(long long v);
+
+dynarr* dynarr_new(size_t size)
+{
     dynarr* arr = calloc(1, sizeof(dynarr));
-    if (!arr) {
-        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__, __LINE__, errno);
-        return NULL;
-    }
+    if (!arr) return NULL;
 
+    size = roundnextpow2(size);
     arr->arr = calloc(size, sizeof(void*));
-    if (!arr->arr) {
-        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__, __LINE__, errno);
-        return NULL;
-    }
+    if (!arr->arr) return NULL;
 
     arr->cap = size;
     arr->len = 0;
     return arr;
 }
 
-int dynarr_add(dynarr *arr, void *elem) {
+static long long roundnextpow2(long long v)
+{
+    size_t size = sizeof(long long);
+    v--;
+    for (int power = 1; power < size; power *= 2) {
+        v |= v >> power;
+    }
+    v++;
+    return v;
+}
+
+int dynarr_add(dynarr* arr, void* elem)
+{
     if (arr->len >= arr->cap - 1) {
-        size_t new_cap = arr->cap * 2;
-        arr->arr = reallocarray(arr->arr, new_cap, sizeof(void*));
-        if (!arr->arr) {
-            fprintf(stderr, "%s:%d: cannot reallocate memory [errno: %d]\n", __FILE__, __LINE__, errno);
-            return -1;
-        }
-        arr->cap = new_cap;
+        size_t old_cap = arr->cap;
+        void* old_arr = arr->arr;
+        arr->cap *= 2;
+        arr->arr = calloc(arr->cap * 2, sizeof(void*));
+        if (!arr->arr) return -1;
+        memcpy(arr->arr, old_arr, old_cap);
     }
 
     arr->arr[arr->len++] = elem;
     return 0;
 }
 
-int dynarr_set(dynarr* arr, size_t i, void* elem) {
+int dynarr_set(dynarr* arr, size_t i, void* elem)
+{
     if (i < 0 || i >= arr->len) {
         fprintf(stderr, "%s:%d: index %lu out of bound\n", __FILE__, __LINE__, i);
         return -1;
@@ -46,7 +56,8 @@ int dynarr_set(dynarr* arr, size_t i, void* elem) {
     return 0;
 }
 
-void* dynarr_get(dynarr *arr, size_t i) {
+void* dynarr_get(dynarr *arr, size_t i)
+{
     if (i < 0 || i >= arr->len) {
         fprintf(stderr, "%s:%d: index %lu out of bound\n", __FILE__, __LINE__, i);
         return NULL;
@@ -55,10 +66,12 @@ void* dynarr_get(dynarr *arr, size_t i) {
     return arr->arr[i];
 }
 
-size_t dynarr_size(dynarr* arr) {
+size_t dynarr_size(dynarr* arr)
+{
     return arr->len;
 }
 
-void dynarr_qsort(dynarr *arr, int (*compar)(const void *, const void *)) {
+void dynarr_qsort(dynarr *arr, int (*compar)(const void *, const void *))
+{
     qsort(arr->arr, arr->len, sizeof(void*), compar);
 }
