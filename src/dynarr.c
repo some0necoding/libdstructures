@@ -210,6 +210,18 @@ static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem)
     return 0;
 }
 
+uint8_t dynarr_remove(dynarr *arr, size_t i)
+{
+    if (i < 0 || i >= arr->len) return 1;
+    free(arr->entries[i]);
+    for (i = i + 1; i < arr->len; i++) {
+        arr->entries[i - 1] = arr->entries[i];
+    }
+    arr->len--;
+    arr->entries[arr->len] = NULL;
+    return 0;
+}
+
 size_t dynarr_size(dynarr* arr)
 {
     return arr->len;

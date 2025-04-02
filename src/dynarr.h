@@ -101,6 +101,16 @@ uint8_t dynarr_get32 (dynarr* arr, size_t i, uint32_t* elem);
 uint8_t dynarr_get64 (dynarr* arr, size_t i, uint64_t* elem);
 
 /**
+ * Remove an element from a particular index of the array.
+ *
+ * @param arr the array to remove the element from
+ * @param i the index of the element to remove
+ * @return 0 no error;
+ *         1 index out of range
+ */
+uint8_t dynarr_remove(dynarr* arr, size_t i);
+
+/**
  * Get the current length of the array.
  *
  * @param arr the dynarr instance to get the length of
