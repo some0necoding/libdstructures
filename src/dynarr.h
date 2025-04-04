@@ -60,6 +60,7 @@ dynarr* dynarr_new(size_t size);
  * @param elem pointer or 8/16/32/64 bit value to insert at the end of the array
  * @return 0 no error;
  *         1 memory allocation failed
+ *         2 resizing failed
  */
 uint8_t dynarr_appendptr(dynarr* arr, void* elem);
 uint8_t dynarr_append8  (dynarr* arr, uint8_t elem);
@@ -99,6 +100,18 @@ uint8_t dynarr_get8  (dynarr* arr, size_t i, uint8_t* elem);
 uint8_t dynarr_get16 (dynarr* arr, size_t i, uint16_t* elem);
 uint8_t dynarr_get32 (dynarr* arr, size_t i, uint32_t* elem);
 uint8_t dynarr_get64 (dynarr* arr, size_t i, uint64_t* elem);
+
+/**
+ * Remove an element from a particular index of the array.
+ *
+ * @param arr the array to remove the element from
+ * @param i the index of the element to remove
+ * @return 0 no error;
+ *         1 memory allocation failed
+ *         2 resizing failed
+ *         3 index out of range
+ */
+uint8_t dynarr_remove(dynarr* arr, size_t i);
 
 /**
  * Get the current length of the array.

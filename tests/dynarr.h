@@ -11,3 +11,7 @@ void test_dynarr_set_32();
 void test_dynarr_set_64();
 void test_dynarr_size();
 void test_dynarr_qsort();
+void test_dynarr_remove_start();
+void test_dynarr_remove_end();
+void test_dynarr_remove_middle();
+void test_dynarr_remove_halving();

@@ -4,6 +4,17 @@
 #include <string.h>
 
 static long long roundnextpow2(long long v);
+
+/**
+ * Resize the array of entries to new_size.
+ *
+ * @param the array whose entries array will be resized
+ * @param new_size the new size of the entries array
+ * @return 0 no error;
+ *         1 memory allocation failed
+ *         2 new_size is less than the current number of entries
+ */
+static uint8_t dynarr_resize(dynarr* arr, size_t new_size);
 static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type);
 static uint8_t dynarr_set(dynarr* arr, size_t i, void* elem, enum elem_type type);
 static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem);
@@ -14,7 +25,7 @@ dynarr* dynarr_new(size_t size)
     if (!arr) return NULL;
 
     size = roundnextpow2(size);
-    arr->entries = calloc(size, sizeof(void*));
+    arr->entries = calloc(size, sizeof(dynarr_entry*));
     if (!arr->entries) return NULL;
 
     arr->cap = size;
@@ -61,12 +72,8 @@ uint8_t dynarr_append64 (dynarr* arr, uint64_t elem)
 static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type)
 {
     if (arr->len >= arr->cap - 1) {
-        size_t old_cap = arr->cap;
-        void* old_arr = arr->entries;
-        arr->cap *= 2;
-        arr->entries = calloc(arr->cap * 2, sizeof(void*));
-        if (!arr->entries) return 1;
-        memcpy(arr->entries, old_arr, old_cap * sizeof(dynarr_entry*));
+        int ret = dynarr_resize(arr, arr->cap * 2);
+        if (ret != 0) return ret;
     }
 
     dynarr_entry* entry = calloc(1, sizeof(dynarr_entry));
@@ -92,6 +99,20 @@ static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type)
     }
     arr->entries[arr->len++] = entry;
 
+    return 0;
+}
+
+static uint8_t dynarr_resize(dynarr* arr, size_t new_size)
+{
+    if (new_size < arr->len) return 2;
+    void* old_arr = arr->entries;
+
+    arr->cap = new_size;
+    arr->entries = calloc(arr->cap, sizeof(dynarr_entry*));
+    if (!arr->entries) return 1;
+
+    memcpy(arr->entries, old_arr, arr->len * sizeof(dynarr_entry*));
+    free(old_arr);
     return 0;
 }
 
@@ -207,6 +228,22 @@ static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem)
             break;
     }
 
+    return 0;
+}
+
+uint8_t dynarr_remove(dynarr *arr, size_t i)
+{
+    if (i < 0 || i >= arr->len) return 3;
+    free(arr->entries[i]);
+    for (i = i + 1; i < arr->len; i++) {
+        arr->entries[i - 1] = arr->entries[i];
+    }
+    arr->len--;
+    arr->entries[arr->len] = NULL;
+    if (arr->len < arr->cap * .25) {
+        uint8_t ret = dynarr_resize(arr, arr->cap / 2);
+        if (ret != 0) return ret;
+    }
     return 0;
 }
 

@@ -8,6 +8,7 @@
 #include <string.h>
 
 static int compare(const void* elem1, const void* elem2);
+static void test_dynarr_remove(const uint8_t expected[], size_t expected_size, size_t index);
 
 void test_dynarr_append_ptr()
 {
@@ -157,6 +158,75 @@ void test_dynarr_size()
     assert(dynarr_size(arr) == 4);
 }
 
+static void test_dynarr_remove(const uint8_t expected[], size_t expected_size, size_t index)
+{
+    dynarr* arr = dynarr_new(10);
+
+    for (int i = 0; i < expected_size; i++) {
+        int ret = dynarr_append8(arr, expected[i]);
+        assert(ret == 0);
+    }
+
+    int ret = dynarr_remove(arr, index);
+    assert(ret == 0);
+    assert(dynarr_size(arr) == 3);
+
+    for (int i = 0; i < dynarr_size(arr); i++) {
+        uint8_t elem;
+        int ret = dynarr_get8(arr, i, &elem);
+        assert(ret == 0);
+        uint32_t expected_index = (i < index) ? i : i + 1;
+        assert(elem == expected[expected_index]);
+    }
+}
+
+void test_dynarr_remove_start()
+{
+    const uint8_t expected[] = { 42, 36, 95, 135 };
+    const size_t expected_size = sizeof(expected) / sizeof(uint8_t);
+    test_dynarr_remove(expected, expected_size, 0);
+}
+
+void test_dynarr_remove_end()
+{
+    const uint8_t expected[] = { 42, 36, 95, 135 };
+    const size_t expected_size = sizeof(expected) / sizeof(uint8_t);
+    test_dynarr_remove(expected, expected_size, 3);
+}
+
+void test_dynarr_remove_middle()
+{
+    const uint8_t expected[] = { 42, 36, 95, 135 };
+    const size_t expected_size = sizeof(expected) / sizeof(uint8_t);
+    test_dynarr_remove(expected, expected_size, 2);
+}
+
+void test_dynarr_remove_halving()
+{
+    const uint8_t expected[] = { 42, 36, 95, 135, 53 };
+    const size_t expected_size = sizeof(expected) / sizeof(uint8_t);
+
+    dynarr* arr = dynarr_new(4);
+
+    for (int i = 0; i < expected_size; i++) {
+        int ret = dynarr_append8(arr, expected[i]);
+        assert(ret == 0);
+    }
+
+    while (dynarr_size(arr) > 1) {
+        int ret = dynarr_remove(arr, 1);
+        assert(ret == 0);
+    }
+
+    assert(dynarr_size(arr) == 1);
+    assert(arr->cap == 4);
+
+    uint8_t elem;
+    int ret = dynarr_get8(arr, 0, &elem);
+    assert(ret == 0);
+    assert(elem == expected[0]);
+}
+
 static int compare(const void* elem1, const void* elem2)
 {
     uint8_t n1 = *(uint8_t*) elem1;
@@ -185,7 +255,6 @@ void test_dynarr_qsort()
         uint8_t elem;
         uint8_t ret = dynarr_get8(arr, i, &elem);
         assert(ret == 0);
-        printf("elem: %d, expected: %d\n", elem, expected[i]);
         assert(elem == expected[i]);
     }
 }

@@ -15,6 +15,10 @@ int main(int argc, char *argv[])
     test_dynarr_set_16();
     test_dynarr_set_32();
     test_dynarr_set_64();
+    test_dynarr_remove_start();
+    test_dynarr_remove_end();
+    test_dynarr_remove_middle();
+    test_dynarr_remove_halving();
     test_dynarr_size();
 
     test_hmap_add_heap_ptr();
