@@ -72,13 +72,8 @@ uint8_t dynarr_append64 (dynarr* arr, uint64_t elem)
 static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type)
 {
     if (arr->len >= arr->cap - 1) {
-        size_t old_cap = arr->cap;
-        void* old_arr = arr->entries;
-        arr->cap *= 2;
-        arr->entries = calloc(arr->cap, sizeof(dynarr_entry*));
-        if (!arr->entries) return 1;
-        memcpy(arr->entries, old_arr, arr->len * sizeof(dynarr_entry*));
-        free(old_arr);
+        int ret = dynarr_resize(arr, arr->cap * 2);
+        if (ret != 0) return ret;
     }
 
     dynarr_entry* entry = calloc(1, sizeof(dynarr_entry));

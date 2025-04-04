@@ -60,6 +60,7 @@ dynarr* dynarr_new(size_t size);
  * @param elem pointer or 8/16/32/64 bit value to insert at the end of the array
  * @return 0 no error;
  *         1 memory allocation failed
+ *         2 resizing failed
  */
 uint8_t dynarr_appendptr(dynarr* arr, void* elem);
 uint8_t dynarr_append8  (dynarr* arr, uint8_t elem);
