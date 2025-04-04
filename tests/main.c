@@ -18,6 +18,7 @@ int main(int argc, char *argv[])
     test_dynarr_remove_start();
     test_dynarr_remove_end();
     test_dynarr_remove_middle();
+    test_dynarr_remove_halving();
     test_dynarr_size();
 
     test_hmap_add_heap_ptr();

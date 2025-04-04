@@ -106,7 +106,9 @@ uint8_t dynarr_get64 (dynarr* arr, size_t i, uint64_t* elem);
  * @param arr the array to remove the element from
  * @param i the index of the element to remove
  * @return 0 no error;
- *         1 index out of range
+ *         1 memory allocation failed
+ *         2 resizing failed
+ *         3 index out of range
  */
 uint8_t dynarr_remove(dynarr* arr, size_t i);
 
