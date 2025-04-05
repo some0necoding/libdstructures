@@ -32,18 +32,10 @@ hmap* hmap_new(size_t size)
     size = roundnextpow2(size);
 
     hmap* map = calloc(1, sizeof(hmap));
-    if (!map) {
-        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
-                __LINE__, errno);
-        return NULL;
-    }
+    if (!map) return NULL;
 
     map->entries = calloc(size, sizeof(hmap_entry*));
-    if (!map->entries) {
-        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
-                __LINE__, errno);
-        return NULL;
-    }
+    if (!map->entries) return NULL;
 
     map->cap = size;
     map->len = 0;
@@ -67,26 +59,15 @@ static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum
 {
     if (load_factor(map) > .5) {
         int ret = rehash(map, map->cap * 2);
-        if (ret > 0) {
-            fprintf(stderr, "%s:%d: cannot rehash table\n", __FILE__, __LINE__);
-            return ret;
-        }
+        if (ret > 0) return ret;
     }
 
     hmap_entry* entry = calloc(1, sizeof(hmap_entry));
-    if (!entry) {
-        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
-                __LINE__, errno);
-        return 1;
-    }
+    if (!entry) return 1;
 
     entry->key_size = key_size;
     entry->key = calloc(entry->key_size, 1);
-    if (!entry->key) {
-        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
-                __LINE__, errno);
-        return 1;
-    }
+    if (!entry->key) return 1;
 
     memcpy(entry->key, key, entry->key_size);
 
@@ -169,20 +150,12 @@ static float load_factor(hmap* map)
 
 static uint8_t rehash(hmap* map, size_t newsize)
 {
-    if (newsize < map->len) {
-        fprintf(stderr, "%s:%d: size is less than number of entries\n", __FILE__,
-                __LINE__);
-        return 2;
-    }
+    if (newsize < map->len) return 2;
 
     hmap_entry** old_table = map->entries;
     size_t old_cap = map->cap;
     map->entries = calloc(newsize, sizeof(hmap_entry*));
-    if (!map->entries) {
-        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
-                __LINE__, errno);
-        return 1;
-    }
+    if (!map->entries) return 1;
 
     map->cap = newsize;
     map->len = 0;
@@ -337,11 +310,7 @@ uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
 {
     *entries_size = map->len;
     *entries = calloc(map->len, sizeof(hmap_entry*));
-    if (!*entries) {
-        fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
-                __LINE__, errno);
-        return 1;
-    }
+    if (!*entries) return 1;
 
     uint64_t next = 0;
     for (int i = 0; i < map->cap; i++) {
@@ -349,20 +318,12 @@ uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
 
         hmap_entry* old_entry = map->entries[i];
         hmap_entry* new_entry = calloc(1, sizeof(hmap_entry));
-        if (!new_entry) {
-            fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
-                    __LINE__, errno);
-            return 1;
-        }
+        if (!new_entry) return 1;
 
 
         new_entry->key_size = old_entry->key_size;
         new_entry->key = calloc(new_entry->key_size, 1);
-        if (!new_entry->key) {
-            fprintf(stderr, "%s:%d: cannot allocate memory [errno: %d]\n", __FILE__,
-                    __LINE__, errno);
-            return 1;
-        }
+        if (!new_entry->key) return 1;
 
         memcpy(new_entry->key, old_entry->key, new_entry->key_size);
         new_entry->type = old_entry->type;
