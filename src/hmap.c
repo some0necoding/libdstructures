@@ -208,7 +208,6 @@ uint8_t hmap_get8(hmap* map, void* key, size_t key_size, uint8_t* value)
     uint8_t* _value;
     uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
     if (ret == 0) *value = *_value;
-    *value = *_value;
     return ret;
 }
 
@@ -219,7 +218,6 @@ uint8_t hmap_get16(hmap* map, void* key, size_t key_size, uint16_t* value)
     uint16_t* _value;
     uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
     if (ret == 0) *value = *_value;
-    *value = *_value;
     return ret;
 }
 
@@ -230,7 +228,6 @@ uint8_t hmap_get32(hmap* map, void* key, size_t key_size, uint32_t* value)
     uint32_t* _value;
     uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
     if (ret == 0) *value = *_value;
-    *value = *_value;
     return ret;
 }
 
