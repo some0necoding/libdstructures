@@ -253,3 +253,10 @@ size_t dynarr_size(dynarr* arr)
 }
 
 void dynarr_qsort(dynarr *arr, int (*compar)(const void *, const void *)) {}
+
+void dynarr_free(dynarr *arr)
+{
+    for (int i = 0; i < arr->len; i++) free(arr->entries[i]);
+    free(arr->entries);
+    free(arr);
+}

@@ -20,6 +20,7 @@ void test_dynarr_append_ptr()
     uint8_t ret = dynarr_getptr(arr, 0, (void**) &actual);
     assert(ret == 0);
     assert(strcmp(expected, actual) == 0);
+    dynarr_free(arr);
 }
 
 void test_dynarr_append_8()
@@ -31,6 +32,7 @@ void test_dynarr_append_8()
     uint8_t ret = dynarr_get8(arr, 0, &actual);
     assert(ret == 0);
     assert(actual == expected);
+    dynarr_free(arr);
 }
 
 void test_dynarr_append_16()
@@ -42,6 +44,7 @@ void test_dynarr_append_16()
     uint16_t ret = dynarr_get16(arr, 0, &actual);
     assert(ret == 0);
     assert(actual == expected);
+    dynarr_free(arr);
 }
 
 void test_dynarr_append_32()
@@ -53,6 +56,7 @@ void test_dynarr_append_32()
     uint32_t ret = dynarr_get32(arr, 0, &actual);
     assert(ret == 0);
     assert(actual == expected);
+    dynarr_free(arr);
 }
 
 void test_dynarr_append_64()
@@ -64,6 +68,7 @@ void test_dynarr_append_64()
     uint64_t ret = dynarr_get64(arr, 0, &actual);
     assert(ret == 0);
     assert(actual == expected);
+    dynarr_free(arr);
 }
 
 void test_dynarr_append_with_reallocation()
@@ -84,6 +89,8 @@ void test_dynarr_append_with_reallocation()
         assert(ret == 0);
         assert(actual == expected[i]);
     }
+
+    dynarr_free(arr);
 }
 
 void test_dynarr_set_ptr()
@@ -101,6 +108,7 @@ void test_dynarr_set_ptr()
     ret = dynarr_getptr(arr, 0, (void**) &actual);
     assert(ret == 0);
     assert(strcmp(actual, expected) == 0);
+    dynarr_free(arr);
 }
 
 void test_dynarr_set_8()
@@ -111,6 +119,7 @@ void test_dynarr_set_8()
     uint8_t n;
     uint8_t ret = dynarr_get8(arr, 0, &n);
     assert(n == 42);
+    dynarr_free(arr);
 }
 
 void test_dynarr_set_16()
@@ -121,6 +130,7 @@ void test_dynarr_set_16()
     uint16_t n;
     uint16_t ret = dynarr_get16(arr, 0, &n);
     assert(n == 42);
+    dynarr_free(arr);
 }
 
 void test_dynarr_set_32()
@@ -131,6 +141,7 @@ void test_dynarr_set_32()
     uint32_t n;
     uint32_t ret = dynarr_get32(arr, 0, &n);
     assert(n == 42);
+    dynarr_free(arr);
 }
 
 void test_dynarr_set_64()
@@ -141,6 +152,7 @@ void test_dynarr_set_64()
     uint64_t n;
     uint64_t ret = dynarr_get64(arr, 0, &n);
     assert(n == 42);
+    dynarr_free(arr);
 }
 
 void test_dynarr_size()
@@ -156,6 +168,7 @@ void test_dynarr_size()
     }
 
     assert(dynarr_size(arr) == 4);
+    dynarr_free(arr);
 }
 
 static void test_dynarr_remove(const uint8_t expected[], size_t expected_size, size_t index)
@@ -178,6 +191,8 @@ static void test_dynarr_remove(const uint8_t expected[], size_t expected_size, s
         uint32_t expected_index = (i < index) ? i : i + 1;
         assert(elem == expected[expected_index]);
     }
+
+    dynarr_free(arr);
 }
 
 void test_dynarr_remove_start()
@@ -225,6 +240,8 @@ void test_dynarr_remove_halving()
     int ret = dynarr_get8(arr, 0, &elem);
     assert(ret == 0);
     assert(elem == expected[0]);
+
+    dynarr_free(arr);
 }
 
 static int compare(const void* elem1, const void* elem2)
@@ -257,4 +274,6 @@ void test_dynarr_qsort()
         assert(ret == 0);
         assert(elem == expected[i]);
     }
+
+    dynarr_free(arr);
 }

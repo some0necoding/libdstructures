@@ -122,3 +122,10 @@ uint8_t dynarr_remove(dynarr* arr, size_t i);
 size_t  dynarr_size(dynarr* arr);
 
 void    dynarr_qsort(dynarr* arr, int (*compar)(const void*, const void*));
+
+/**
+ * Free a dynarr instance.
+ *
+ * @param arr the dynamic array to free
+ */
+void dynarr_free(dynarr* arr);
