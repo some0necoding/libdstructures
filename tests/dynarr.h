@@ -15,3 +15,6 @@ void test_dynarr_remove_start();
 void test_dynarr_remove_end();
 void test_dynarr_remove_middle();
 void test_dynarr_remove_halving();
+void test_dynarr_slice_valid();
+void test_dynarr_slice_j_less_than_i();
+void test_dynarr_slice_j_greater_than_arrlen();

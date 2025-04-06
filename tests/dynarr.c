@@ -1,7 +1,6 @@
 #include "../src/dynarr.h"
 #include "dynarr.h"
 #include <assert.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +8,8 @@
 
 static int compare(const void* elem1, const void* elem2);
 static void test_dynarr_remove(const uint8_t expected[], size_t expected_size, size_t index);
+static void test_dynarr_slice(const uint8_t data[], size_t data_size, size_t start,
+    size_t end, const uint8_t expected_ret, const uint8_t expected[], size_t expected_size);
 
 void test_dynarr_append_ptr()
 {
@@ -276,4 +277,71 @@ void test_dynarr_qsort()
     }
 
     dynarr_free(arr);
+}
+
+static void test_dynarr_slice(
+    const uint8_t data[],
+    size_t data_size,
+    size_t start,
+    size_t end,
+    const uint8_t expected_ret,
+    const uint8_t expected[],
+    size_t expected_size
+) {
+    dynarr* arr = dynarr_new(10);
+
+    for (int i = 0; i < data_size; i++) {
+        int ret = dynarr_append8(arr, data[i]);
+        assert(ret == 0);
+    }
+
+    dynarr* slice;
+    int ret = dynarr_slice(arr, start, end, &slice);
+    assert(ret == expected_ret);
+
+    if (expected_ret == 0) {
+        assert(expected_size == dynarr_size(slice));
+        for (int i = 0; i < dynarr_size(slice); i++) {
+            uint8_t elem;
+            int ret = dynarr_get8(slice, i, &elem);
+            assert(ret == 0);
+            assert(elem == expected[i]);
+        }
+    }
+
+    dynarr_free(arr);
+    dynarr_free(slice);
+}
+
+void test_dynarr_slice_valid()
+{
+    const uint8_t data[] = { 42, 36, 95, 135, 53 };
+    const size_t data_size = sizeof(data) / sizeof(uint8_t);
+
+    const uint8_t expected[] = { 36, 95 };
+    const size_t expected_size = sizeof(expected) / sizeof(uint8_t);
+
+    test_dynarr_slice(data, data_size, 1, 3, 0, expected, expected_size);
+}
+
+void test_dynarr_slice_j_less_than_i()
+{
+    const uint8_t data[] = { 42, 36, 95, 135, 53 };
+    const size_t data_size = sizeof(data) / sizeof(uint8_t);
+
+    const uint8_t expected[] = {0};
+    const size_t expected_size = 0;
+
+    test_dynarr_slice(data, data_size, 3, 1, 0, expected, expected_size);
+}
+
+void test_dynarr_slice_j_greater_than_arrlen()
+{
+    const uint8_t data[] = { 42, 36, 95, 135, 53 };
+    const size_t data_size = sizeof(data) / sizeof(uint8_t);
+
+    const uint8_t expected[] = { 95, 135, 53 };
+    const size_t expected_size = sizeof(expected) / sizeof(uint8_t);
+
+    test_dynarr_slice(data, data_size, 2, 6, 0, expected, expected_size);
 }
