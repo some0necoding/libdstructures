@@ -102,6 +102,23 @@ uint8_t dynarr_get32 (dynarr* arr, size_t i, uint32_t* elem);
 uint8_t dynarr_get64 (dynarr* arr, size_t i, uint64_t* elem);
 
 /**
+ * Returns a new dynamic array containing the j - i elements of arr starting
+ * from index i (i.e. j is exclusive).
+ *
+ * if j > arr->len it is set to arr->len. After this correction if j <= i an
+ * empty dynarr is returned.
+ *
+ * @param arr the array to slice
+ * @param i the start index of the slice
+ * @param j the last (exclusive) index of the slice
+ * @param slice the returned slice. Note that it is allocated by the function
+ * @return 0 if no error
+ *         1 memory allocation failed
+ *         2 resizing failed
+ */
+uint8_t dynarr_slice(dynarr* arr, size_t i, size_t j, dynarr** slice);
+
+/**
  * Remove an element from a particular index of the array.
  *
  * @param arr the array to remove the element from
@@ -121,7 +138,17 @@ uint8_t dynarr_remove(dynarr* arr, size_t i);
  */
 size_t  dynarr_size(dynarr* arr);
 
-void    dynarr_qsort(dynarr* arr, int (*compar)(const void*, const void*));
+/**
+ * Sort an array.
+ *
+ * @param arr the array to sort
+ * @param compar the comparison function that will be applied to the entries of
+ *               the array and that must return:
+ *                - 0 on equality
+ *                - < 0 if first entry < second entry
+ *                - > 0 if first entry > second entry
+ */
+uint8_t dynarr_sort(dynarr* arr, int (*compar)(const dynarr_entry*, const dynarr_entry*));
 
 /**
  * Free a dynarr instance.

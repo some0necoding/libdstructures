@@ -16,8 +16,30 @@ static long long roundnextpow2(long long v);
  */
 static uint8_t dynarr_resize(dynarr* arr, size_t new_size);
 static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type);
+
+/**
+ * Append an entry to a dynamic array.
+ *
+ * @param arr the array to append to
+ * @param entry the entry to append
+ * @return 0 no error;
+ *         1 memory allocation failed
+ *         2 resizing failed
+ */
+static uint8_t dynarr_append_entry(dynarr* arr, dynarr_entry* entry);
 static uint8_t dynarr_set(dynarr* arr, size_t i, void* elem, enum elem_type type);
 static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem);
+static void merge(dynarr_entry** src, size_t left, size_t right, size_t end, dynarr_entry** dest, int (*compar)(const dynarr_entry*, const dynarr_entry*));
+static uint64_t min(uint64_t a, uint64_t b);
+
+/**
+ * Make a copy of an entry.
+ *
+ * @param entry the entry to copy
+ * @return a pointer to the copy if no error occurs; NULL if memory allocation
+ *         fails
+ */
+static dynarr_entry* dynarr_entry_copy(dynarr_entry* entry);
 
 dynarr* dynarr_new(size_t size)
 {
@@ -71,11 +93,6 @@ uint8_t dynarr_append64 (dynarr* arr, uint64_t elem)
 
 static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type)
 {
-    if (arr->len >= arr->cap - 1) {
-        int ret = dynarr_resize(arr, arr->cap * 2);
-        if (ret != 0) return ret;
-    }
-
     dynarr_entry* entry = calloc(1, sizeof(dynarr_entry));
     if (!entry) return 1;
 
@@ -97,9 +114,8 @@ static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type)
             entry->elem_64 = *(uint64_t*) elem;
             break;
     }
-    arr->entries[arr->len++] = entry;
 
-    return 0;
+    return dynarr_append_entry(arr, entry);
 }
 
 static uint8_t dynarr_resize(dynarr* arr, size_t new_size)
@@ -113,6 +129,17 @@ static uint8_t dynarr_resize(dynarr* arr, size_t new_size)
 
     memcpy(arr->entries, old_arr, arr->len * sizeof(dynarr_entry*));
     free(old_arr);
+    return 0;
+}
+
+static uint8_t dynarr_append_entry(dynarr* arr, dynarr_entry* entry)
+{
+    if (arr->len >= arr->cap - 1) {
+        int ret = dynarr_resize(arr, arr->cap * 2);
+        if (ret != 0) return ret;
+    }
+
+    arr->entries[arr->len++] = entry;
     return 0;
 }
 
@@ -231,6 +258,53 @@ static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem)
     return 0;
 }
 
+uint8_t dynarr_slice(dynarr* arr, size_t i, size_t j, dynarr** slice)
+{
+    size_t arr_size = dynarr_size(arr);
+    if (j > arr_size) j = arr_size;
+
+    size_t amount = (j < i) ? 0 : j - i;
+    *slice = dynarr_new(amount);
+    if (!*slice) return 1;
+    if (amount == 0) return 0;
+
+    while ((*slice)->len < amount) {
+        dynarr_entry* entry = arr->entries[(*slice)->len + i];
+        dynarr_entry* copy = dynarr_entry_copy(entry);
+        if (!copy) return 1;
+        (*slice)->entries[(*slice)->len++] = copy;
+    }
+
+    return 0;
+}
+
+static dynarr_entry* dynarr_entry_copy(dynarr_entry* entry)
+{
+    dynarr_entry* copy = calloc(1, sizeof(dynarr_entry));
+    if (!copy) return NULL;
+
+    copy->type = entry->type;
+    switch (copy->type) {
+        case PTR:
+            copy->elem_ptr = entry->elem_ptr;
+            break;
+        case BIT_8:
+            copy->elem_8 = entry->elem_8;
+            break;
+        case BIT_16:
+            copy->elem_16 = entry->elem_16;
+            break;
+        case BIT_32:
+            copy->elem_32 = entry->elem_32;
+            break;
+        case BIT_64:
+            copy->elem_64 = entry->elem_64;
+            break;
+    }
+
+    return copy;
+}
+
 uint8_t dynarr_remove(dynarr *arr, size_t i)
 {
     if (i < 0 || i >= arr->len) return 3;
@@ -252,7 +326,46 @@ size_t dynarr_size(dynarr* arr)
     return arr->len;
 }
 
-void dynarr_qsort(dynarr *arr, int (*compar)(const void *, const void *)) {}
+/**
+ * The following sort is implemented with a bottom-up mergesort. Not adaptive. It
+ * uses O(n) space and O(nlogn) time.
+ */
+
+uint8_t dynarr_sort(dynarr *arr, int (*compar)(const dynarr_entry*, const dynarr_entry*))
+{
+    dynarr_entry** temp = calloc(arr->len, sizeof(dynarr_entry*));
+    if (!temp) return 1;
+
+    for (size_t width = 1; width < arr->len; width = width * 2) {
+        for (int i = 0; i < arr->len; i = i + 2 * width) {
+            merge(arr->entries, i, min(i + width, arr->len), min(i + 2 * width, arr->len), temp, compar);
+        }
+        memcpy(arr->entries, temp, arr->len * sizeof(dynarr_entry*));
+    }
+
+    return 0;
+}
+
+static uint64_t min(uint64_t a, uint64_t b) { return (a < b) ? a : b; }
+
+static void merge(
+    dynarr_entry** src,
+	size_t left,
+	size_t right,
+	size_t end,
+	dynarr_entry** dest,
+	int (*compar)(const dynarr_entry*, const dynarr_entry*)
+) {
+    size_t i = left;
+    size_t j = right;
+    for (size_t k = left; k < end; k++) {
+        if (i < right && (j >= end || compar(src[i], src[j]) <= 0)) {
+            dest[k] = src[i++];
+        } else {
+            dest[k] = src[j++];
+        }
+    }
+}
 
 void dynarr_free(dynarr *arr)
 {
