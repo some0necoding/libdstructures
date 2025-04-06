@@ -1,4 +1,4 @@
-AC_INIT([dstructures], [0.1], [codingandprogramming.code@gmail.com])
+AC_INIT([libdstructures], [0.1], [codingandprogramming.code@gmail.com])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects])
 AC_PROG_CC
 AC_CONFIG_HEADERS([config.h])

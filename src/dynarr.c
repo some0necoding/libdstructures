@@ -19,6 +19,15 @@ static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type);
 static uint8_t dynarr_set(dynarr* arr, size_t i, void* elem, enum elem_type type);
 static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem);
 
+/**
+ * Make a copy of an entry.
+ *
+ * @param entry the entry to copy
+ * @return a pointer to the copy if no error occurs; NULL if memory allocation
+ *         fails
+ */
+static dynarr_entry* dynarr_entry_copy(dynarr_entry* entry);
+
 dynarr* dynarr_new(size_t size)
 {
     dynarr* arr = calloc(1, sizeof(dynarr));
@@ -229,6 +238,53 @@ static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem)
     }
 
     return 0;
+}
+
+uint8_t dynarr_slice(dynarr* arr, size_t i, size_t j, dynarr** slice)
+{
+    size_t arr_size = dynarr_size(arr);
+    if (j > arr_size) j = arr_size;
+
+    size_t amount = (j < i) ? 0 : j - i;
+    *slice = dynarr_new(amount);
+    if (!*slice) return 1;
+    if (amount == 0) return 0;
+
+    while ((*slice)->len < amount) {
+        dynarr_entry* entry = arr->entries[(*slice)->len + i];
+        dynarr_entry* copy = dynarr_entry_copy(entry);
+        if (!copy) return 1;
+        (*slice)->entries[(*slice)->len++] = copy;
+    }
+
+    return 0;
+}
+
+static dynarr_entry* dynarr_entry_copy(dynarr_entry* entry)
+{
+    dynarr_entry* copy = calloc(1, sizeof(dynarr_entry));
+    if (!copy) return NULL;
+
+    copy->type = entry->type;
+    switch (copy->type) {
+        case PTR:
+            copy->elem_ptr = entry->elem_ptr;
+            break;
+        case BIT_8:
+            copy->elem_8 = entry->elem_8;
+            break;
+        case BIT_16:
+            copy->elem_16 = entry->elem_16;
+            break;
+        case BIT_32:
+            copy->elem_32 = entry->elem_32;
+            break;
+        case BIT_64:
+            copy->elem_64 = entry->elem_64;
+            break;
+    }
+
+    return copy;
 }
 
 uint8_t dynarr_remove(dynarr *arr, size_t i)
