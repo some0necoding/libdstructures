@@ -18,3 +18,4 @@ void test_dynarr_remove_halving();
 void test_dynarr_slice_valid();
 void test_dynarr_slice_j_less_than_i();
 void test_dynarr_slice_j_greater_than_arrlen();
+void test_dynarr_sort_normal();

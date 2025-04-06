@@ -138,7 +138,17 @@ uint8_t dynarr_remove(dynarr* arr, size_t i);
  */
 size_t  dynarr_size(dynarr* arr);
 
-void    dynarr_qsort(dynarr* arr, int (*compar)(const void*, const void*));
+/**
+ * Sort an array.
+ *
+ * @param arr the array to sort
+ * @param compar the comparison function that will be applied to the entries of
+ *               the array and that must return:
+ *                - 0 on equality
+ *                - < 0 if first entry < second entry
+ *                - > 0 if first entry > second entry
+ */
+uint8_t dynarr_sort(dynarr* arr, int (*compar)(const dynarr_entry*, const dynarr_entry*));
 
 /**
  * Free a dynarr instance.

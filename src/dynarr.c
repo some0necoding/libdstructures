@@ -29,6 +29,8 @@ static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type);
 static uint8_t dynarr_append_entry(dynarr* arr, dynarr_entry* entry);
 static uint8_t dynarr_set(dynarr* arr, size_t i, void* elem, enum elem_type type);
 static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem);
+static void merge(dynarr_entry** src, size_t left, size_t right, size_t end, dynarr_entry** dest, int (*compar)(const dynarr_entry*, const dynarr_entry*));
+static uint64_t min(uint64_t a, uint64_t b);
 
 /**
  * Make a copy of an entry.
@@ -324,7 +326,46 @@ size_t dynarr_size(dynarr* arr)
     return arr->len;
 }
 
-void dynarr_qsort(dynarr *arr, int (*compar)(const void *, const void *)) {}
+/**
+ * The following sort is implemented with a bottom-up mergesort. Not adaptive. It
+ * uses O(n) space and O(nlogn) time.
+ */
+
+uint8_t dynarr_sort(dynarr *arr, int (*compar)(const dynarr_entry*, const dynarr_entry*))
+{
+    dynarr_entry** temp = calloc(arr->len, sizeof(dynarr_entry*));
+    if (!temp) return 1;
+
+    for (size_t width = 1; width < arr->len; width = width * 2) {
+        for (int i = 0; i < arr->len; i = i + 2 * width) {
+            merge(arr->entries, i, min(i + width, arr->len), min(i + 2 * width, arr->len), temp, compar);
+        }
+        memcpy(arr->entries, temp, arr->len * sizeof(dynarr_entry*));
+    }
+
+    return 0;
+}
+
+static uint64_t min(uint64_t a, uint64_t b) { return (a < b) ? a : b; }
+
+static void merge(
+    dynarr_entry** src,
+	size_t left,
+	size_t right,
+	size_t end,
+	dynarr_entry** dest,
+	int (*compar)(const dynarr_entry*, const dynarr_entry*)
+) {
+    size_t i = left;
+    size_t j = right;
+    for (size_t k = left; k < end; k++) {
+        if (i < right && (j >= end || compar(src[i], src[j]) <= 0)) {
+            dest[k] = src[i++];
+        } else {
+            dest[k] = src[j++];
+        }
+    }
+}
 
 void dynarr_free(dynarr *arr)
 {

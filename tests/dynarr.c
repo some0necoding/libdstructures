@@ -6,10 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int compare(const void* elem1, const void* elem2);
+static int compare(const dynarr_entry* entry1, const dynarr_entry* entry2);
 static void test_dynarr_remove(const uint8_t expected[], size_t expected_size, size_t index);
 static void test_dynarr_slice(const uint8_t data[], size_t data_size, size_t start,
     size_t end, const uint8_t expected_ret, const uint8_t expected[], size_t expected_size);
+static void test_dynarr_sort(const uint8_t data[], const size_t data_size,
+        int (*compar)(const dynarr_entry*, const dynarr_entry*),
+        const uint8_t expected[], size_t expected_size);
 
 void test_dynarr_append_ptr()
 {
@@ -245,29 +248,22 @@ void test_dynarr_remove_halving()
     dynarr_free(arr);
 }
 
-static int compare(const void* elem1, const void* elem2)
-{
-    uint8_t n1 = *(uint8_t*) elem1;
-    uint8_t n2 = *(uint8_t*) elem2;
-    if (n1 < n2) return -1;
-    if (n1 > n2) return 1;
-    return 0;
-}
-
-void test_dynarr_qsort()
-{
-    const uint8_t input[] = { 1, 5, 3, 2, 4 };
-    const size_t input_size = sizeof(input) / sizeof(uint8_t);
-    const uint8_t expected[] = { 1, 2, 3, 4, 5 };
-    const size_t expected_size = sizeof(expected) / sizeof(uint8_t);
-
+static void test_dynarr_sort(
+    const uint8_t data[],
+	const size_t data_size,
+	int (*compar)(const dynarr_entry*, const dynarr_entry*),
+	const uint8_t expected[],
+	size_t expected_size
+) {
     dynarr* arr = dynarr_new(10);
-    for (int i = 0; i < input_size; i++) {
-        uint8_t ret = dynarr_append8(arr, input[i]);
+
+    for (int i = 0; i < data_size; i++) {
+        uint8_t ret = dynarr_append8(arr, data[i]);
         assert(ret == 0);
     }
 
-    dynarr_qsort(arr, compare);
+    int ret = dynarr_sort(arr, compar);
+    assert(ret == 0);
 
     for (int i = 0; i < expected_size; i++) {
         uint8_t elem;
@@ -277,6 +273,22 @@ void test_dynarr_qsort()
     }
 
     dynarr_free(arr);
+}
+
+static int compare(const dynarr_entry* entry1, const dynarr_entry* entry2)
+{
+    if (entry1->type == BIT_8 && entry1->type == BIT_8)
+        return entry1->elem_8 - entry2->elem_8;
+    return 0;
+}
+
+void test_dynarr_sort_normal()
+{
+    const uint8_t input[] = { 1, 5, 3, 2, 4 };
+    const size_t input_size = sizeof(input) / sizeof(uint8_t);
+    const uint8_t expected[] = { 1, 2, 3, 4, 5 };
+    const size_t expected_size = sizeof(expected) / sizeof(uint8_t);
+    test_dynarr_sort(input, input_size, compare, expected, expected_size);
 }
 
 static void test_dynarr_slice(

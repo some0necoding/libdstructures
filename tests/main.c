@@ -23,6 +23,7 @@ int main(int argc, char *argv[])
     test_dynarr_slice_j_less_than_i();
     test_dynarr_slice_j_greater_than_arrlen();
     test_dynarr_size();
+    test_dynarr_sort_normal();
 
     test_hmap_add_heap_ptr();
     test_hmap_add_stack_ptr();
