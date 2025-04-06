@@ -16,6 +16,17 @@ static long long roundnextpow2(long long v);
  */
 static uint8_t dynarr_resize(dynarr* arr, size_t new_size);
 static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type);
+
+/**
+ * Append an entry to a dynamic array.
+ *
+ * @param arr the array to append to
+ * @param entry the entry to append
+ * @return 0 no error;
+ *         1 memory allocation failed
+ *         2 resizing failed
+ */
+static uint8_t dynarr_append_entry(dynarr* arr, dynarr_entry* entry);
 static uint8_t dynarr_set(dynarr* arr, size_t i, void* elem, enum elem_type type);
 static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem);
 
@@ -80,11 +91,6 @@ uint8_t dynarr_append64 (dynarr* arr, uint64_t elem)
 
 static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type)
 {
-    if (arr->len >= arr->cap - 1) {
-        int ret = dynarr_resize(arr, arr->cap * 2);
-        if (ret != 0) return ret;
-    }
-
     dynarr_entry* entry = calloc(1, sizeof(dynarr_entry));
     if (!entry) return 1;
 
@@ -106,9 +112,8 @@ static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type)
             entry->elem_64 = *(uint64_t*) elem;
             break;
     }
-    arr->entries[arr->len++] = entry;
 
-    return 0;
+    return dynarr_append_entry(arr, entry);
 }
 
 static uint8_t dynarr_resize(dynarr* arr, size_t new_size)
@@ -122,6 +127,17 @@ static uint8_t dynarr_resize(dynarr* arr, size_t new_size)
 
     memcpy(arr->entries, old_arr, arr->len * sizeof(dynarr_entry*));
     free(old_arr);
+    return 0;
+}
+
+static uint8_t dynarr_append_entry(dynarr* arr, dynarr_entry* entry)
+{
+    if (arr->len >= arr->cap - 1) {
+        int ret = dynarr_resize(arr, arr->cap * 2);
+        if (ret != 0) return ret;
+    }
+
+    arr->entries[arr->len++] = entry;
     return 0;
 }
 
