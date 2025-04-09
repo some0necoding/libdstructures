@@ -1,3 +1,6 @@
+#ifndef LIBDSTRUCTURES_DYNARR_H
+#define LIBDSTRUCTURES_DYNARR_H
+
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -156,3 +159,5 @@ uint8_t dynarr_sort(dynarr* arr, int (*compar)(const dynarr_entry*, const dynarr
  * @param arr the dynamic array to free
  */
 void dynarr_free(dynarr* arr);
+
+#endif // !LIBDSTRUCTURES_DYNARR_H
