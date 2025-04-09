@@ -1,3 +1,6 @@
+#ifndef LIBDSTRUCTURES_HMAP_H
+#define LIBDSTRUCTURES_HMAP_H
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -134,3 +137,5 @@ uint8_t hmap_entries(hmap* map, hmap_entry*** entries, size_t* entries_size);
  * @param map the map to be freed
  */
 void hmap_free(hmap* map);
+
+#endif // !LIBDSTRUCTURES_HMAP_H
