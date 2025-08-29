@@ -71,7 +71,7 @@ hmap*    hmap_new(size_t size);
  * a 8/16/32/64 bit value.
  * The memory region the pointer value points to does not get copied, the map
  * only stores the memory reference; instead the key is copied, and that's why
- * key_size is needed.
+ * key_size is needed. On error the hashmap is unchanged.
  *
  * @param map the map to update
  * @param key pointer of the memory region that contains the key
