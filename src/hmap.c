@@ -3,16 +3,44 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <string.h>
 
 static uint32_t murmur3_32(const void* data, size_t msize);
 static long long roundnextpow2(long long v);
 static float load_factor(hmap* map);
-static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry);
 
 /**
- * Rehash map to reset its size to newsize.
+ * Insert key-value pair into the hashmap. Generic function used internally to
+ * implement all hmap_put* public functions. On error the hashmap is unchanged.
+ *
+ * @param map the hashmap to put key-value pair into
+ * @param key pointer to memory region containing the key
+ * @param key_size size of the memory region containing the key
+ * @param value pointer to value
+ * @param type type of the value
+ * @return 0 on success;
+ *         1 if memory allocation fails;
+ *         2 if rehash fails
+ */
+static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum value_type type);
+static void hmap_put_entry(hmap* map, hmap_entry* entry);
+
+/**
+ * Retrieve value based on key. Generic function used internally to
+ * implement all hmap_get* public functions. On error the hashmap is unchanged.
+ *
+ * @param map the hashmap to retrieve the key from
+ * @param key pointer to memory region containing the lookup key
+ * @param key_size size of the memory region containing the lookup key
+ * @param value memory region that will contain the pointer to the retrieved
+ *              value. To be considered undefined on error.
+ * @return 0 on success;
+ *         1 if key is not found
+ */
+static uint8_t hmap_get(hmap* map, void* key, size_t key_size, void** value);
+
+/**
+ * Rehash map to reset its size to newsize. On error the hashmap remains unchanged.
  *
  * @param map the map to rehash
  * @param newsize the new size of the map
@@ -35,7 +63,10 @@ hmap* hmap_new(size_t size)
     if (!map) return NULL;
 
     map->entries = calloc(size, sizeof(hmap_entry*));
-    if (!map->entries) return NULL;
+    if (!map->entries) {
+        free(map);
+        return NULL;
+    }
 
     map->cap = size;
     map->len = 0;
@@ -67,7 +98,10 @@ static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum
 
     entry->key_size = key_size;
     entry->key = calloc(entry->key_size, 1);
-    if (!entry->key) return 1;
+    if (!entry->key) {
+        free(entry);
+        return 1;
+    }
 
     memcpy(entry->key, key, entry->key_size);
 
@@ -94,7 +128,8 @@ static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum
             break;
     }
 
-    return hmap_put_entry(map, entry);
+    hmap_put_entry(map, entry);
+    return 0;
 }
 
 uint8_t hmap_putptr(hmap* map, void* key, size_t key_size, void* value)
@@ -122,12 +157,11 @@ uint8_t hmap_put64(hmap* map, void* key, size_t key_size, uint64_t value)
     return hmap_put(map, key, key_size, &value, BIT_64);
 }
 
-static uint8_t hmap_put_entry(hmap* map, hmap_entry* entry)
+static void hmap_put_entry(hmap* map, hmap_entry* entry)
 {
     const uint32_t hash = find_slot(map, entry->key, entry->key_size);
     map->len = (map->entries[hash]) ? map->len : map->len + 1; // if entry is being overridden do not increase length
     map->entries[hash] = entry;
-    return 0;
 }
 
 static uint32_t find_slot(hmap* map, const void* key, size_t key_size)
@@ -155,7 +189,10 @@ static uint8_t rehash(hmap* map, size_t newsize)
     hmap_entry** old_table = map->entries;
     size_t old_cap = map->cap;
     map->entries = calloc(newsize, sizeof(hmap_entry*));
-    if (!map->entries) return 1;
+    if (!map->entries) {
+        map->entries = old_table;
+        return 1;
+    }
 
     map->cap = newsize;
     map->len = 0;
@@ -271,11 +308,14 @@ uint8_t hmap_remove(hmap* map, void* key, size_t key_size)
  *        ^
  * probe stops here and a3 is unreachable
  *
- * For this reason the cluster should be compacted. An entry is in the right
- * position (i.e. in a different cluster) if it's hash lies between the deleted
- * slot index and its current slot index (also considering index overflow).
- * If an entry is not in the right position it is moved in the currently empty
- * slot and its slot is marked as the new empty.
+ * For this reason the cluster should be compacted relocating each entry after
+ * the empty slot, in order. An entry is already in the right position - and
+ * consequently is part of a different cluster - if its hash lies between the
+ * currently empty slot index (excluded) and its current slot index (also
+ * considering index overflow).
+ * If an entry is not in the right position - and thus is part of this same
+ * cluster - it is moved in the currently empty slot and its slot is marked as
+ * the new empty.
  *
  * right position:
  *  if (empty <= slot) |           empty..hash..slot            |
@@ -287,7 +327,7 @@ static void compact_cluster(hmap* map, uint32_t empty_slot)
     for (uint32_t slot = (empty_slot + 1) % map->cap; map->entries[slot]; slot = (slot + 1) % map->cap) {
         hmap_entry* entry = map->entries[slot];
         uint32_t hash = map->hash(entry->key, entry->key_size);
-        if (different_cluster(empty_slot, slot, hash)) continue;
+        if (different_cluster(empty_slot, slot, hash)) break;
         map->entries[empty_slot] = entry;
         map->entries[slot] = NULL;
         empty_slot = slot;
@@ -305,22 +345,33 @@ static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t 
 
 uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
 {
+    uint8_t ret = 0;
+    uint64_t next = 0;
     *entries_size = map->len;
     *entries = calloc(map->len, sizeof(hmap_entry*));
-    if (!*entries) return 1;
+    if (!*entries) {
+        ret = 1;
+        goto _ret;
+    }
 
-    uint64_t next = 0;
     for (int i = 0; i < map->cap; i++) {
         if (!map->entries[i]) continue;
 
         hmap_entry* old_entry = map->entries[i];
         hmap_entry* new_entry = calloc(1, sizeof(hmap_entry));
-        if (!new_entry) return 1;
+        if (!new_entry) {
+            ret = 1;
+            goto _ret;
+        }
 
 
         new_entry->key_size = old_entry->key_size;
         new_entry->key = calloc(new_entry->key_size, 1);
-        if (!new_entry->key) return 1;
+        if (!new_entry->key) {
+            free(new_entry);
+            ret = 1;
+            goto _ret;
+        }
 
         memcpy(new_entry->key, old_entry->key, new_entry->key_size);
         new_entry->type = old_entry->type;
@@ -346,7 +397,13 @@ uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
         (*entries)[next++] = new_entry;
     }
 
-    return 0;
+_ret:
+    if (*entries && ret != 0) {
+        for (size_t i = 0; i < next; i++)
+            free((*entries)[i]);
+        free(*entries);
+    }
+    return ret;
 }
 
 void hmap_free(hmap* map)
@@ -367,6 +424,39 @@ void hmap_free(hmap* map)
  * available in C++ (https://github.com/aappleby/smhasher/).
  * This C port has been created by Seungyoung Kim and has been published as
  * part of qLibc (https://github.com/wolkykim/qlibc).
+ *
+ * qLibc License
+ * =============
+ *
+ * ==============================================================================
+ * qLibc
+ *
+ * Copyright (c) 2010-2015 Seungyoung Kim.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ * ==============================================================================
+ * (end of COPYRIGHT)
+ *
  */
 static uint32_t murmur3_32(const void* data, size_t dsize)
 {
