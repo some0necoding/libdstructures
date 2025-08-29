@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 static long long roundnextpow2(long long v);
 
@@ -48,7 +49,10 @@ dynarr* dynarr_new(size_t size)
 
     size = roundnextpow2(size);
     arr->entries = calloc(size, sizeof(dynarr_entry*));
-    if (!arr->entries) return NULL;
+    if (!arr->entries) {
+        free(arr);
+        return NULL;
+    }
 
     arr->cap = size;
     arr->len = 0;
@@ -125,7 +129,10 @@ static uint8_t dynarr_resize(dynarr* arr, size_t new_size)
 
     arr->cap = new_size;
     arr->entries = calloc(arr->cap, sizeof(dynarr_entry*));
-    if (!arr->entries) return 1;
+    if (!arr->entries) {
+        arr->entries = old_arr;
+        return 1;
+    }
 
     memcpy(arr->entries, old_arr, arr->len * sizeof(dynarr_entry*));
     free(old_arr);
@@ -260,22 +267,35 @@ static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem)
 
 uint8_t dynarr_slice(dynarr* arr, size_t i, size_t j, dynarr** slice)
 {
+    uint8_t ret = 0;
     size_t arr_size = dynarr_size(arr);
     if (j > arr_size) j = arr_size;
 
     size_t amount = (j < i) ? 0 : j - i;
     *slice = dynarr_new(amount);
-    if (!*slice) return 1;
-    if (amount == 0) return 0;
+    if (!*slice) {
+        ret = 1;
+        goto _ret;
+    }
+    if (amount == 0) goto _ret;
 
     while ((*slice)->len < amount) {
         dynarr_entry* entry = arr->entries[(*slice)->len + i];
         dynarr_entry* copy = dynarr_entry_copy(entry);
-        if (!copy) return 1;
+        if (!copy) {
+            ret = 1;
+            goto _ret;
+        }
         (*slice)->entries[(*slice)->len++] = copy;
     }
 
-    return 0;
+_ret:
+    if (*slice && ret != 0) {
+        for (size_t i = 0; i < (*slice)->len; i++)
+            free((*slice)->entries[i]);
+        free(*slice);
+    }
+    return ret;
 }
 
 static dynarr_entry* dynarr_entry_copy(dynarr_entry* entry)
@@ -308,16 +328,51 @@ static dynarr_entry* dynarr_entry_copy(dynarr_entry* entry)
 uint8_t dynarr_remove(dynarr *arr, size_t i)
 {
     if (i < 0 || i >= arr->len) return 3;
-    free(arr->entries[i]);
-    for (i = i + 1; i < arr->len; i++) {
-        arr->entries[i - 1] = arr->entries[i];
-    }
+
+    /**
+     * When an element different than the last one is removed all the following
+     * are shifted back by 1 in order to keep the array dense. In case of error,
+     * if want to preserve the original dynarr state, we would need to unshift
+     * all elements to their original position, requiring a second O(n)
+     * iteration which is annoying even if equivalent in big-O notation.
+     *
+     * To avoid this we initially just swap the i-th element (the one to be
+     * removed) with the last one and shrink the array, effectively reducing the
+     * size of the dynarr but without shifting anything. Also, a reference to
+     * the element to be removed is kept.
+     *
+     * Now resizing can be performed. If it goes well following elements are
+     * shifted by 1, the last element (now at index i) is inserted after them
+     * and the element to be removed is free'd; otherwise the last element and
+     * the one to be removed are put back in their original positions, the
+     * length is increased and the error is returned.
+     */
+
+    bool is_last = i == arr->len - 1;
+    dynarr_entry* rm = arr->entries[i];
+    if (!is_last)
+        arr->entries[i] = arr->entries[arr->len - 1];
+    arr->entries[arr->len - 1] = NULL;
     arr->len--;
-    arr->entries[arr->len] = NULL;
+
     if (arr->len < arr->cap * .25) {
         uint8_t ret = dynarr_resize(arr, arr->cap / 2);
-        if (ret != 0) return ret;
+        if (ret != 0) {
+            arr->len++;
+            arr->entries[arr->len - 1] = arr->entries[i];
+            arr->entries[i] = rm;
+            return ret;
+        } else {
+            if (!is_last) {
+                dynarr_entry* last = arr->entries[i];
+                for (size_t j = i + 1; j < arr->len; j++)
+                    arr->entries[j - 1] = arr->entries[j];
+                arr->entries[arr->len - 1] = last;
+            }
+            free(rm);
+        }
     }
+
     return 0;
 }
 
