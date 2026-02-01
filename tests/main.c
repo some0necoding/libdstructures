@@ -14,19 +14,13 @@ int main(int argc, char *argv[])
     test_dynarr_halving();
     test_dynarr_sort();
 
-    test_hmap_add_heap_ptr();
-    test_hmap_add_stack_ptr();
-    test_hmap_add_8();
-    test_hmap_add_16();
-    test_hmap_add_32();
-    test_hmap_add_64();
+    test_hmap_add();
     test_hmap_add_str_key();
-    test_hmap_remove();
-    test_hmap_rehash();
     test_hmap_add_duplicate_key();
-    test_hmap_entries();
-    test_hmap_remove_unexistent_key();
+    test_hmap_remove();
     test_hmap_remove_with_collisions();
+    test_hmap_remove_unexistent_key();
+    test_hmap_rehash();
 
     return EXIT_SUCCESS;
 }

@@ -16,5 +16,6 @@ uint32_t int64_hash(const void* val);
 void*    str_dup(void *val);
 void     str_free(void *val);
 int      str_compare(const void *val1, const void *val2);
+uint32_t str_hash(const void *s);
 
 #endif // !TYPES_H

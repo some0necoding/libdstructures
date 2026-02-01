@@ -35,3 +35,7 @@ int      str_compare(const void *val1, const void *val2)
     size_t n = min(strlen(val1), strlen(val2));
     return strncmp(val1, val2, n);
 }
+uint32_t str_hash(const void* s)
+{
+    return murmur3_32(s, strlen(s));
+}

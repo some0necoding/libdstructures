@@ -5,39 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-static uint32_t murmur3_32(const void* data, size_t msize);
 static long long roundnextpow2(long long v);
 static float load_factor(hmap* map);
 
-/**
- * Insert key-value pair into the hashmap. Generic function used internally to
- * implement all hmap_put* public functions. On error the hashmap is unchanged.
- *
- * @param map the hashmap to put key-value pair into
- * @param key pointer to memory region containing the key
- * @param key_size size of the memory region containing the key
- * @param value pointer to value
- * @param type type of the value
- * @return 0 on success;
- *         1 if memory allocation fails;
- *         2 if rehash fails
- */
-static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum value_type type);
-static void hmap_put_entry(hmap* map, hmap_entry* entry);
-
-/**
- * Retrieve value based on key. Generic function used internally to
- * implement all hmap_get* public functions. On error the hashmap is unchanged.
- *
- * @param map the hashmap to retrieve the key from
- * @param key pointer to memory region containing the lookup key
- * @param key_size size of the memory region containing the lookup key
- * @param value memory region that will contain the pointer to the retrieved
- *              value. To be considered undefined on error.
- * @return 0 on success;
- *         1 if key is not found
- */
-static uint8_t hmap_get(hmap* map, void* key, size_t key_size, void** value);
+static void hmap_put_entry(hmap* map, struct hmap_entry* entry);
+static void free_entry(struct hmap_type *type, struct hmap_entry *entry);
 
 /**
  * Rehash map to reset its size to newsize. On error the hashmap remains unchanged.
@@ -49,30 +21,43 @@ static uint8_t hmap_get(hmap* map, void* key, size_t key_size, void** value);
  *         2 if newsize is less than the current number of entries in the map.
  */
 static uint8_t rehash(hmap* map, size_t newsize);
-static bool keys_equal(const void* key1, size_t key1_size, const void* key2, size_t key2_size);
+
 static void compact_cluster(hmap* map, uint32_t empty_slot);
 static bool overflow(uint32_t start, uint32_t end);
 static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t hash);
-static uint32_t find_slot(hmap* map, const void* key, size_t key_size);
+static uint32_t find_slot(hmap* map, const void* key);
+
+static void free_entry(struct hmap_type *type, struct hmap_entry *entry)
+{
+    if (type->keyFree) type->keyFree(entry->key);
+    if (type->valFree) type->valFree(entry->val);
+    free(entry);
+}
 
 hmap* hmap_new(size_t size)
 {
+    hmap* map = NULL;
+
+    map = calloc(1, sizeof(hmap));
+    if (!map) goto enomem;
+
+    map->type = calloc(1, sizeof(struct hmap_type));
+    if (!map->type) goto enomem;
+
     size = roundnextpow2(size);
-
-    hmap* map = calloc(1, sizeof(hmap));
-    if (!map) return NULL;
-
-    map->entries = calloc(size, sizeof(hmap_entry*));
-    if (!map->entries) {
-        free(map);
-        return NULL;
-    }
+    map->entries = calloc(size, sizeof(struct hmap_entry*));
+    if (!map->entries) goto enomem;
 
     map->cap = size;
     map->len = 0;
-    map->hash = murmur3_32;
 
     return map;
+
+enomem:
+    if (map->entries) free(map->entries);
+    if (map->type)    free(map->type);
+    if (map)          free(map);
+    return NULL;
 }
 
 static long long roundnextpow2(long long v)
@@ -86,95 +71,49 @@ static long long roundnextpow2(long long v)
     return v;
 }
 
-static uint8_t hmap_put(hmap* map, void* key, size_t key_size, void* value, enum value_type type)
+uint8_t hmap_put(hmap* map, void* key, void* value)
 {
     if (load_factor(map) > .5) {
         int ret = rehash(map, map->cap * 2);
         if (ret > 0) return ret;
     }
 
-    hmap_entry* entry = calloc(1, sizeof(hmap_entry));
+    struct hmap_entry* entry = calloc(1, sizeof(struct hmap_entry));
     if (!entry) return 1;
 
-    entry->key_size = key_size;
-    entry->key = calloc(entry->key_size, 1);
+    entry->key = (map->type->keyDup) ? map->type->keyDup(key) : key;
     if (!entry->key) {
-        free(entry);
-        return 1;
+        free_entry(map->type, entry);
+        return 3;
     }
 
-    memcpy(entry->key, key, entry->key_size);
-
-    switch (type) {
-        case PTR:
-            entry->value_ptr = value;
-            entry->type = PTR;
-            break;
-        case BIT_8:
-            entry->value_8 = *(uint8_t*) value;
-            entry->type = BIT_8;
-            break;
-        case BIT_16:
-            entry->value_16 = *(uint16_t*) value;
-            entry->type = BIT_16;
-            break;
-        case BIT_32:
-            entry->value_32 = *(uint32_t*) value;
-            entry->type = BIT_32;
-            break;
-        case BIT_64:
-            entry->value_64 = *(uint64_t*) value;
-            entry->type = BIT_64;
-            break;
+    entry->val = (map->type->valDup) ? map->type->valDup(value) : value;
+    if (!entry->val) {
+        free_entry(map->type, entry);
+        return 3;
     }
 
     hmap_put_entry(map, entry);
     return 0;
 }
 
-uint8_t hmap_putptr(hmap* map, void* key, size_t key_size, void* value)
+static void hmap_put_entry(hmap* map, struct hmap_entry* entry)
 {
-    return hmap_put(map, key, key_size, value, PTR);
-}
+    const uint32_t hash = find_slot(map, entry->key);
 
-uint8_t hmap_put8(hmap* map, void* key, size_t key_size, uint8_t value)
-{
-    return hmap_put(map, key, key_size, &value, BIT_8);
-}
+    // if entry is being overridden do not increase length and free the old entry
+    if (map->entries[hash]) free_entry(map->type, map->entries[hash]);
+    else                    map->len++;
 
-uint8_t hmap_put16(hmap* map, void* key, size_t key_size, uint16_t value)
-{
-    return hmap_put(map, key, key_size, &value, BIT_16);
-}
-
-uint8_t hmap_put32(hmap* map, void* key, size_t key_size, uint32_t value)
-{
-    return hmap_put(map, key, key_size, &value, BIT_32);
-}
-
-uint8_t hmap_put64(hmap* map, void* key, size_t key_size, uint64_t value)
-{
-    return hmap_put(map, key, key_size, &value, BIT_64);
-}
-
-static void hmap_put_entry(hmap* map, hmap_entry* entry)
-{
-    const uint32_t hash = find_slot(map, entry->key, entry->key_size);
-    map->len = (map->entries[hash]) ? map->len : map->len + 1; // if entry is being overridden do not increase length
     map->entries[hash] = entry;
 }
 
-static uint32_t find_slot(hmap* map, const void* key, size_t key_size)
+static uint32_t find_slot(hmap* map, const void* key)
 {
-    uint32_t hash = map->hash(key, key_size) % map->cap;
-    while (map->entries[hash] && !keys_equal(map->entries[hash]->key, map->entries[hash]->key_size, key, key_size))
-        hash = (hash + 1) % map->cap; // skipping busy buckets (linear probing)
+    uint32_t hash = map->type->hash(key) % map->cap;
+    while (map->entries[hash] && map->type->keyCompare(map->entries[hash]->key, key) != 0)
+        hash = (hash + 1) % map->cap; // probe linearly
     return hash;
-}
-
-static bool keys_equal(const void* key1, size_t key1_size, const void* key2, size_t key2_size)
-{
-    return (key1_size == key2_size && memcmp(key1, key2, key1_size) == 0);
 }
 
 static float load_factor(hmap* map)
@@ -186,9 +125,9 @@ static uint8_t rehash(hmap* map, size_t newsize)
 {
     if (newsize < map->len) return 2;
 
-    hmap_entry** old_table = map->entries;
+    struct hmap_entry** old_table = map->entries;
     size_t old_cap = map->cap;
-    map->entries = calloc(newsize, sizeof(hmap_entry*));
+    map->entries = calloc(newsize, sizeof(struct hmap_entry*));
     if (!map->entries) {
         map->entries = old_table;
         return 1;
@@ -198,93 +137,32 @@ static uint8_t rehash(hmap* map, size_t newsize)
     map->len = 0;
 
     for (int i = 0; i < old_cap; i++) {
-        hmap_entry* entry = old_table[i];
+        struct hmap_entry* entry = old_table[i];
         if (entry) hmap_put_entry(map, entry);
     }
 
     free(old_table);
-
     return 0;
 }
 
-static uint8_t hmap_get(hmap* map, void* key, size_t key_size, void** value)
+uint8_t hmap_get(hmap* map, void* key, void** value)
 {
-    const uint32_t hash = find_slot(map, key, key_size);
-    hmap_entry* entry = map->entries[hash];
+    const uint32_t hash = find_slot(map, key);
+    struct hmap_entry* entry = map->entries[hash];
     if (!entry) return 1;
 
-    switch (entry->type) {
-        case PTR:
-            *value = map->entries[hash]->value_ptr;
-            break;
-        case BIT_8:
-            *value = &map->entries[hash]->value_8;
-            break;
-        case BIT_16:
-            *value = &map->entries[hash]->value_16;
-            break;
-        case BIT_32:
-            *value = &map->entries[hash]->value_32;
-            break;
-        case BIT_64:
-            *value = &map->entries[hash]->value_64;
-            break;
-    }
+    *value = entry->val;
     return 0;
 }
 
-uint8_t hmap_getptr(hmap* map, void* key, size_t key_size, void** value)
+uint8_t hmap_remove(hmap* map, void* key)
 {
-    return hmap_get(map, key, key_size, value);
-}
-
-uint8_t hmap_get8(hmap* map, void* key, size_t key_size, uint8_t* value)
-{
-    // directly passing &value to hmap_get would override value, which
-    // is the stack address we need to return the value to the user.
-    uint8_t* _value;
-    uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
-    if (ret == 0) *value = *_value;
-    return ret;
-}
-
-uint8_t hmap_get16(hmap* map, void* key, size_t key_size, uint16_t* value)
-{
-    // directly passing &value to hmap_get would override value, which
-    // is the stack address we need to return the value to the user.
-    uint16_t* _value;
-    uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
-    if (ret == 0) *value = *_value;
-    return ret;
-}
-
-uint8_t hmap_get32(hmap* map, void* key, size_t key_size, uint32_t* value)
-{
-    // directly passing &value to hmap_get would override value, which
-    // is the stack address we need to return the value to the user.
-    uint32_t* _value;
-    uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
-    if (ret == 0) *value = *_value;
-    return ret;
-}
-
-uint8_t hmap_get64(hmap* map, void* key, size_t key_size, uint64_t* value)
-{
-    // directly passing &value to hmap_get would override value, which
-    // is the stack address we need to return the value to the user.
-    uint64_t* _value;
-    uint8_t ret = hmap_get(map, key, key_size, (void**) &_value);
-    if (ret == 0) *value = *_value;
-    return ret;
-}
-
-uint8_t hmap_remove(hmap* map, void* key, size_t key_size)
-{
-    const uint32_t hash = find_slot(map, key, key_size);
-    hmap_entry* entry = map->entries[hash];
+    const uint32_t hash = find_slot(map, key);
+    struct hmap_entry* entry = map->entries[hash];
     if (!entry) return 1;
-    free(entry->key);
-    free(entry);
+    if (map->type->keyFree) map->type->keyFree(entry->key);
+    if (map->type->valFree) map->type->valFree(entry->val);
+    free_entry(map->type, entry);
     map->entries[hash] = NULL;
     map->len--;
     compact_cluster(map, hash);
@@ -325,8 +203,8 @@ uint8_t hmap_remove(hmap* map, void* key, size_t key_size)
 static void compact_cluster(hmap* map, uint32_t empty_slot)
 {
     for (uint32_t slot = (empty_slot + 1) % map->cap; map->entries[slot]; slot = (slot + 1) % map->cap) {
-        hmap_entry* entry = map->entries[slot];
-        uint32_t hash = map->hash(entry->key, entry->key_size);
+        struct hmap_entry* entry = map->entries[slot];
+        uint32_t hash = map->type->hash(entry->key);
         if (different_cluster(empty_slot, slot, hash)) break;
         map->entries[empty_slot] = entry;
         map->entries[slot] = NULL;
@@ -343,169 +221,13 @@ static bool different_cluster(uint32_t empty_slot, uint32_t curr_slot, uint32_t 
     return hash <= curr_slot || empty_slot < hash;
 }
 
-uint8_t hmap_entries(hmap *map, hmap_entry ***entries, size_t *entries_size)
-{
-    uint8_t ret = 0;
-    uint64_t next = 0;
-    *entries_size = map->len;
-    *entries = calloc(map->len, sizeof(hmap_entry*));
-    if (!*entries) {
-        ret = 1;
-        goto _ret;
-    }
-
-    for (int i = 0; i < map->cap; i++) {
-        if (!map->entries[i]) continue;
-
-        hmap_entry* old_entry = map->entries[i];
-        hmap_entry* new_entry = calloc(1, sizeof(hmap_entry));
-        if (!new_entry) {
-            ret = 1;
-            goto _ret;
-        }
-
-
-        new_entry->key_size = old_entry->key_size;
-        new_entry->key = calloc(new_entry->key_size, 1);
-        if (!new_entry->key) {
-            free(new_entry);
-            ret = 1;
-            goto _ret;
-        }
-
-        memcpy(new_entry->key, old_entry->key, new_entry->key_size);
-        new_entry->type = old_entry->type;
-
-        switch (old_entry->type) {
-            case PTR:
-                new_entry->value_ptr = old_entry->value_ptr;
-                break;
-            case BIT_8:
-                new_entry->value_8 = old_entry->value_8;
-                break;
-            case BIT_16:
-                new_entry->value_16 = old_entry->value_16;
-                break;
-            case BIT_32:
-                new_entry->value_32 = old_entry->value_32;
-                break;
-            case BIT_64:
-                new_entry->value_64 = old_entry->value_64;
-                break;
-        }
-
-        (*entries)[next++] = new_entry;
-    }
-
-_ret:
-    if (*entries && ret != 0) {
-        for (size_t i = 0; i < next; i++)
-            free((*entries)[i]);
-        free(*entries);
-    }
-    return ret;
-}
-
 void hmap_free(hmap* map)
 {
     for (uint32_t i = 0; i < map->cap; i++) {
-        hmap_entry* entry = map->entries[i];
-        if (entry) {
-            free(entry->key);
-            free(entry);
-        }
+        struct hmap_entry* entry = map->entries[i];
+        if (entry) free_entry(map->type, entry);
     }
     free(map->entries);
+    free(map->type);
     free(map);
-}
-
-/*
- * MurmurHash3 has been created by Austin Appleby and the original code is
- * available in C++ (https://github.com/aappleby/smhasher/).
- * This C port has been created by Seungyoung Kim and has been published as
- * part of qLibc (https://github.com/wolkykim/qlibc).
- *
- * qLibc License
- * =============
- *
- * ==============================================================================
- * qLibc
- *
- * Copyright (c) 2010-2015 Seungyoung Kim.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- *    this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- *    this list of conditions and the following disclaimer in the documentation
- *    and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- * ==============================================================================
- * (end of COPYRIGHT)
- *
- */
-static uint32_t murmur3_32(const void* data, size_t dsize)
-{
-    if (data == NULL || dsize == 0) return 0;
-
-    const uint32_t c1 = 0xcc9e2d51;
-    const uint32_t c2 = 0x1b873593;
-
-    const int nblocks = dsize / 4;
-    const uint32_t *blocks = (const uint32_t *) (data);
-    const uint8_t *tail = (const uint8_t *) (data + (nblocks * 4));
-
-    uint32_t h = 0;
-
-    int i;
-    uint32_t k;
-    for (i = 0; i < nblocks; i++) {
-        k = blocks[i];
-
-        k *= c1;
-        k = (k << 15) | (k >> (32 - 15));
-        k *= c2;
-
-        h ^= k;
-        h = (h << 13) | (h >> (32 - 13));
-        h = (h * 5) + 0xe6546b64;
-    }
-
-    k = 0;
-    switch (dsize & 3) {
-        case 3:
-            k ^= tail[2] << 16;
-        case 2:
-            k ^= tail[1] << 8;
-        case 1:
-            k ^= tail[0];
-            k *= c1;
-            k = (k << 15) | (k >> (32 - 15));
-            k *= c2;
-            h ^= k;
-    };
-
-    h ^= dsize;
-
-    h ^= h >> 16;
-    h *= 0x85ebca6b;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35;
-    h ^= h >> 16;
-
-    return h;
 }
