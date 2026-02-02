@@ -1,8 +1,11 @@
 #include "dynarr.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+
+static uint64_t min(uint64_t a, uint64_t b);
 
 static long long roundnextpow2(long long v);
 
@@ -16,7 +19,6 @@ static long long roundnextpow2(long long v);
  *         2 new_size is less than the current number of entries
  */
 static uint8_t dynarr_resize(dynarr* arr, size_t new_size);
-static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type);
 
 /**
  * Append an entry to a dynamic array.
@@ -27,36 +29,39 @@ static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type);
  *         1 memory allocation failed
  *         2 resizing failed
  */
-static uint8_t dynarr_append_entry(dynarr* arr, dynarr_entry* entry);
-static uint8_t dynarr_set(dynarr* arr, size_t i, void* elem, enum elem_type type);
-static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem);
-static void merge(dynarr_entry** src, size_t left, size_t right, size_t end, dynarr_entry** dest, int (*compar)(const dynarr_entry*, const dynarr_entry*));
-static uint64_t min(uint64_t a, uint64_t b);
+static uint8_t append_entry(dynarr* arr, struct dynarr_entry* entry);
+static void free_entry(struct dynarr_type *type, struct dynarr_entry *entry);
+static void merge(struct dynarr_entry** src, size_t left, size_t right, size_t end, struct dynarr_entry** dest, int (*compar)(const void*, const void*));
 
-/**
- * Make a copy of an entry.
- *
- * @param entry the entry to copy
- * @return a pointer to the copy if no error occurs; NULL if memory allocation
- *         fails
- */
-static dynarr_entry* dynarr_entry_copy(dynarr_entry* entry);
+static void free_entry(struct dynarr_type *type, struct dynarr_entry *entry)
+{
+    if (type->valFree) type->valFree(entry->val);
+    free(entry);
+}
 
 dynarr* dynarr_new(size_t size)
 {
-    dynarr* arr = calloc(1, sizeof(dynarr));
-    if (!arr) return NULL;
+    dynarr* arr = NULL;
+
+    arr = calloc(1, sizeof(dynarr));
+    if (!arr) goto enomem;
+
+    arr->type = calloc(1, sizeof(struct dynarr_type));
+    if (!arr->type) goto enomem;
 
     size = roundnextpow2(size);
-    arr->entries = calloc(size, sizeof(dynarr_entry*));
-    if (!arr->entries) {
-        free(arr);
-        return NULL;
-    }
+    arr->entries = calloc(size, sizeof(struct dynarr_entry*));
+    if (!arr->entries) goto enomem;
 
     arr->cap = size;
     arr->len = 0;
     return arr;
+
+enomem:
+    if (arr->entries) free(arr->entries);
+    if (arr->type)    free(arr->type);
+    if (arr)          free(arr);
+    return NULL;
 }
 
 static long long roundnextpow2(long long v)
@@ -70,56 +75,18 @@ static long long roundnextpow2(long long v)
     return v;
 }
 
-uint8_t dynarr_appendptr(dynarr* arr, void* elem)
+uint8_t dynarr_append(dynarr* arr, void* val)
 {
-    return dynarr_append(arr, elem, PTR);
-}
-
-uint8_t dynarr_append8  (dynarr* arr, uint8_t elem)
-{
-    return dynarr_append(arr, &elem, BIT_8);
-}
-
-uint8_t dynarr_append16 (dynarr* arr, uint16_t elem)
-{
-    return dynarr_append(arr, &elem, BIT_16);
-}
-
-uint8_t dynarr_append32 (dynarr* arr, uint32_t elem)
-{
-    return dynarr_append(arr, &elem, BIT_32);
-}
-
-uint8_t dynarr_append64 (dynarr* arr, uint64_t elem)
-{
-    return dynarr_append(arr, &elem, BIT_64);
-}
-
-static uint8_t dynarr_append(dynarr* arr, void* elem, enum elem_type type)
-{
-    dynarr_entry* entry = calloc(1, sizeof(dynarr_entry));
+    struct dynarr_entry* entry = calloc(1, sizeof(struct dynarr_entry));
     if (!entry) return 1;
 
-    entry->type = type;
-    switch (type) {
-        case PTR:
-            entry->elem_ptr = elem;
-            break;
-        case BIT_8:
-            entry->elem_8 = *(uint8_t*) elem;
-            break;
-        case BIT_16:
-            entry->elem_16 = *(uint16_t*) elem;
-            break;
-        case BIT_32:
-            entry->elem_32 = *(uint32_t*) elem;
-            break;
-        case BIT_64:
-            entry->elem_64 = *(uint64_t*) elem;
-            break;
+    entry->val = (arr->type->valDup) ? arr->type->valDup(val) : val;
+    if (!entry->val) {
+        free_entry(arr->type, entry);
+        return 3;
     }
 
-    return dynarr_append_entry(arr, entry);
+    return append_entry(arr, entry);
 }
 
 static uint8_t dynarr_resize(dynarr* arr, size_t new_size)
@@ -128,201 +95,54 @@ static uint8_t dynarr_resize(dynarr* arr, size_t new_size)
     void* old_arr = arr->entries;
 
     arr->cap = new_size;
-    arr->entries = calloc(arr->cap, sizeof(dynarr_entry*));
+    arr->entries = calloc(arr->cap, sizeof(struct dynarr_entry*));
     if (!arr->entries) {
         arr->entries = old_arr;
         return 1;
     }
 
-    memcpy(arr->entries, old_arr, arr->len * sizeof(dynarr_entry*));
+    memcpy(arr->entries, old_arr, arr->len * sizeof(struct dynarr_entry*));
     free(old_arr);
     return 0;
 }
 
-static uint8_t dynarr_append_entry(dynarr* arr, dynarr_entry* entry)
+static uint8_t append_entry(dynarr* arr, struct dynarr_entry* entry)
 {
     if (arr->len >= arr->cap - 1) {
         int ret = dynarr_resize(arr, arr->cap * 2);
-        if (ret != 0) return ret;
+        if (ret != 0) {
+            free_entry(arr->type, entry);
+            return ret;
+        }
     }
 
     arr->entries[arr->len++] = entry;
     return 0;
 }
 
-uint8_t dynarr_setptr(dynarr* arr, size_t i, void* elem)
-{
-    return dynarr_set(arr, i, elem, PTR);
-}
-
-uint8_t dynarr_set8  (dynarr* arr, size_t i, uint8_t elem)
-{
-    return dynarr_set(arr, i, &elem, BIT_8);
-}
-
-uint8_t dynarr_set16 (dynarr* arr, size_t i, uint16_t elem)
-{
-    return dynarr_set(arr, i, &elem, BIT_16);
-}
-
-uint8_t dynarr_set32 (dynarr* arr, size_t i, uint32_t elem)
-{
-    return dynarr_set(arr, i, &elem, BIT_32);
-}
-
-uint8_t dynarr_set64 (dynarr* arr, size_t i, uint64_t elem)
-{
-    return dynarr_set(arr, i, &elem, BIT_64);
-}
-
-static uint8_t dynarr_set(dynarr* arr, size_t i, void* elem, enum elem_type type)
+uint8_t dynarr_set(dynarr* arr, size_t i, void* val)
 {
     if (i < 0 || i >= arr->len) return 1;
-    dynarr_entry* entry = arr->entries[i];
+    struct dynarr_entry* entry = arr->entries[i];
 
-    entry->type = type;
-    switch (type) {
-        case PTR:
-            entry->elem_ptr = elem;
-            break;
-        case BIT_8:
-            entry->elem_8 = *(uint8_t*) elem;
-            break;
-        case BIT_16:
-            entry->elem_16 = *(uint16_t*) elem;
-            break;
-        case BIT_32:
-            entry->elem_32 = *(uint32_t*) elem;
-            break;
-        case BIT_64:
-            entry->elem_64 = *(uint64_t*) elem;
-            break;
+    void *old = entry->val;
+    entry->val = (arr->type->valDup) ? arr->type->valDup(val) : val;
+    if (!entry->val) {
+        entry->val = old;
+        return 3;
     }
+    if (arr->type->valFree) arr->type->valFree(old);
 
     return 0;
 }
 
-uint8_t dynarr_getptr(dynarr* arr, size_t i, void** elem)
-{
-    return dynarr_get(arr, i, elem);
-}
-
-uint8_t dynarr_get8(dynarr* arr, size_t i, uint8_t* elem)
-{
-    uint8_t* _elem;
-    int ret = dynarr_get(arr, i, (void**) &_elem);
-    if (ret == 0) *elem = *_elem;
-    return ret;
-}
-
-uint8_t dynarr_get16(dynarr* arr, size_t i, uint16_t* elem)
-{
-    uint16_t* _elem;
-    int ret = dynarr_get(arr, i, (void**) &_elem);
-    if (ret == 0) *elem = *_elem;
-    return ret;
-}
-
-uint8_t dynarr_get32(dynarr* arr, size_t i, uint32_t* elem)
-{
-    uint32_t* _elem;
-    int ret = dynarr_get(arr, i, (void**) &_elem);
-    if (ret == 0) *elem = *_elem;
-    return ret;
-}
-
-uint8_t dynarr_get64(dynarr* arr, size_t i, uint64_t* elem)
-{
-    uint64_t* _elem;
-    int ret = dynarr_get(arr, i, (void**) &_elem);
-    if (ret == 0) *elem = *_elem;
-    return ret;
-}
-
-static uint8_t dynarr_get(dynarr *arr, size_t i, void** elem)
+uint8_t dynarr_get(dynarr *arr, size_t i, void** val)
 {
     if (i < 0 || i >= arr->len) return 1;
-    dynarr_entry* entry = arr->entries[i];
+    struct dynarr_entry* entry = arr->entries[i];
 
-    switch (entry->type) {
-        case PTR:
-            *elem = entry->elem_ptr;
-            break;
-        case BIT_8:
-            *elem = &entry->elem_8;
-            break;
-        case BIT_16:
-            *elem = &entry->elem_16;
-            break;
-        case BIT_32:
-            *elem = &entry->elem_32;
-            break;
-        case BIT_64:
-            *elem = &entry->elem_64;
-            break;
-    }
-
+    *val = entry->val;
     return 0;
-}
-
-uint8_t dynarr_slice(dynarr* arr, size_t i, size_t j, dynarr** slice)
-{
-    uint8_t ret = 0;
-    size_t arr_size = dynarr_size(arr);
-    if (j > arr_size) j = arr_size;
-
-    size_t amount = (j < i) ? 0 : j - i;
-    *slice = dynarr_new(amount);
-    if (!*slice) {
-        ret = 1;
-        goto _ret;
-    }
-    if (amount == 0) goto _ret;
-
-    while ((*slice)->len < amount) {
-        dynarr_entry* entry = arr->entries[(*slice)->len + i];
-        dynarr_entry* copy = dynarr_entry_copy(entry);
-        if (!copy) {
-            ret = 1;
-            goto _ret;
-        }
-        (*slice)->entries[(*slice)->len++] = copy;
-    }
-
-_ret:
-    if (*slice && ret != 0) {
-        for (size_t i = 0; i < (*slice)->len; i++)
-            free((*slice)->entries[i]);
-        free(*slice);
-    }
-    return ret;
-}
-
-static dynarr_entry* dynarr_entry_copy(dynarr_entry* entry)
-{
-    dynarr_entry* copy = calloc(1, sizeof(dynarr_entry));
-    if (!copy) return NULL;
-
-    copy->type = entry->type;
-    switch (copy->type) {
-        case PTR:
-            copy->elem_ptr = entry->elem_ptr;
-            break;
-        case BIT_8:
-            copy->elem_8 = entry->elem_8;
-            break;
-        case BIT_16:
-            copy->elem_16 = entry->elem_16;
-            break;
-        case BIT_32:
-            copy->elem_32 = entry->elem_32;
-            break;
-        case BIT_64:
-            copy->elem_64 = entry->elem_64;
-            break;
-    }
-
-    return copy;
 }
 
 uint8_t dynarr_remove(dynarr *arr, size_t i)
@@ -332,9 +152,9 @@ uint8_t dynarr_remove(dynarr *arr, size_t i)
     /**
      * When an element different than the last one is removed all the following
      * are shifted back by 1 in order to keep the array dense. In case of error,
-     * if want to preserve the original dynarr state, we would need to unshift
-     * all elements to their original position, requiring a second O(n)
-     * iteration which is annoying even if equivalent in big-O notation.
+     * if we want to preserve the original dynarr state, we would need to unshift
+     * all elements to their original position, requiring a second annoying
+     * iteration.
      *
      * To avoid this we initially just swap the i-th element (the one to be
      * removed) with the last one and shrink the array, effectively reducing the
@@ -349,31 +169,36 @@ uint8_t dynarr_remove(dynarr *arr, size_t i)
      */
 
     bool is_last = i == arr->len - 1;
-    dynarr_entry* rm = arr->entries[i];
+    struct dynarr_entry* rm = arr->entries[i];
     if (!is_last)
         arr->entries[i] = arr->entries[arr->len - 1];
     arr->entries[arr->len - 1] = NULL;
     arr->len--;
 
+    uint8_t ret = 0;
+
     if (arr->len < arr->cap * .25) {
-        uint8_t ret = dynarr_resize(arr, arr->cap / 2);
-        if (ret != 0) {
-            arr->len++;
-            arr->entries[arr->len - 1] = arr->entries[i];
-            arr->entries[i] = rm;
-            return ret;
-        } else {
-            if (!is_last) {
-                dynarr_entry* last = arr->entries[i];
-                for (size_t j = i + 1; j < arr->len; j++)
-                    arr->entries[j - 1] = arr->entries[j];
-                arr->entries[arr->len - 1] = last;
-            }
-            free(rm);
-        }
+        ret = dynarr_resize(arr, arr->cap / 2);
+        if (ret != 0) goto fail;
     }
 
-    return 0;
+    if (!is_last) {
+        struct dynarr_entry* last = arr->entries[i];
+        for (size_t j = i + 1; j < arr->len; j++)
+            arr->entries[j - 1] = arr->entries[j];
+        arr->entries[arr->len - 1] = last;
+    }
+
+    free_entry(arr->type, rm);
+    goto done;
+
+fail:
+    arr->len++;
+    arr->entries[arr->len - 1] = arr->entries[i];
+    arr->entries[i] = rm;
+
+done:
+    return ret;
 }
 
 size_t dynarr_size(dynarr* arr)
@@ -385,36 +210,39 @@ size_t dynarr_size(dynarr* arr)
  * The following sort is implemented with a bottom-up mergesort. Not adaptive. It
  * uses O(n) space and O(nlogn) time.
  */
-
-uint8_t dynarr_sort(dynarr *arr, int (*compar)(const dynarr_entry*, const dynarr_entry*))
+uint8_t dynarr_sort(dynarr *arr)
 {
-    dynarr_entry** temp = calloc(arr->len, sizeof(dynarr_entry*));
+    struct dynarr_entry** temp = calloc(arr->len, sizeof(struct dynarr_entry*));
     if (!temp) return 1;
+
+    if (!arr->type->valCompare) return 2;
 
     for (size_t width = 1; width < arr->len; width = width * 2) {
         for (int i = 0; i < arr->len; i = i + 2 * width) {
-            merge(arr->entries, i, min(i + width, arr->len), min(i + 2 * width, arr->len), temp, compar);
+            merge(arr->entries, i, min(i + width, arr->len),
+                    min(i + 2 * width, arr->len), temp, arr->type->valCompare);
         }
-        memcpy(arr->entries, temp, arr->len * sizeof(dynarr_entry*));
+        memcpy(arr->entries, temp, arr->len * sizeof(struct dynarr_entry*));
     }
 
+    free(temp);
     return 0;
 }
 
 static uint64_t min(uint64_t a, uint64_t b) { return (a < b) ? a : b; }
 
 static void merge(
-    dynarr_entry** src,
+    struct dynarr_entry** src,
 	size_t left,
 	size_t right,
 	size_t end,
-	dynarr_entry** dest,
-	int (*compar)(const dynarr_entry*, const dynarr_entry*)
+	struct dynarr_entry** dest,
+	int (*compar)(const void*, const void*)
 ) {
     size_t i = left;
     size_t j = right;
     for (size_t k = left; k < end; k++) {
-        if (i < right && (j >= end || compar(src[i], src[j]) <= 0)) {
+        if (i < right && (j >= end || compar(src[i]->val, src[j]->val) <= 0)) {
             dest[k] = src[i++];
         } else {
             dest[k] = src[j++];
@@ -424,7 +252,9 @@ static void merge(
 
 void dynarr_free(dynarr *arr)
 {
-    for (int i = 0; i < arr->len; i++) free(arr->entries[i]);
+    for (int i = 0; i < arr->len; i++)
+        free_entry(arr->type, arr->entries[i]);
     free(arr->entries);
+    free(arr->type);
     free(arr);
 }

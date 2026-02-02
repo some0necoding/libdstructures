@@ -4,42 +4,26 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-/**
- * All possible elem types. Any of its members corresponds to a member of the
- * union inside dynarr_entry.
- */
-enum elem_type {
-    PTR,
-    BIT_8,
-    BIT_16,
-    BIT_32,
-    BIT_64
+struct dynarr_type {
+    void *(*valDup)(void *val);
+    void (*valFree)(void *val);
+    /*
+     * @param valCompare the comparison function that will be applied to the
+     *        entries of the array and that must return:
+     *          - 0 on equality
+     *          - < 0 if val1 < val2
+     *          - > 0 if vas1 > val2
+     */
+    int (*valCompare)(const void *val1, const void *val2);
 };
 
-/**
- * Represents an elem inside the dynamic array. To allow a generic-ish usage the
- * elem can be of different types, specified by the elem_type enum, each one
- * associated with a union member.
- */
-typedef struct {
-    enum elem_type type;
-    union {
-        void* elem_ptr;
-        uint8_t elem_8;
-        uint16_t elem_16;
-        uint32_t elem_32;
-        uint64_t elem_64;
-    };
-} dynarr_entry;
+struct dynarr_entry {
+    void *val;
+};
 
-/**
- * Represents a dynamic array instance. It contains a reference to the array
- * of elements, its length (i.e. number of elements it contains) and its capacity
- * (i.e. the current array size).
- * The entries are allocated contiguously.
- */
 typedef struct {
-    dynarr_entry** entries;
+    struct dynarr_type *type;
+    struct dynarr_entry** entries;
     size_t len;
     size_t cap;
 } dynarr;
@@ -55,71 +39,39 @@ typedef struct {
 dynarr* dynarr_new(size_t size);
 
 /**
- * Append an element at the end of the array. If the element is a pointer the
- * memory region it points to is not copied; the dynarr only keeps a reference
- * to it.
+ * Append an element at the end of the array.
  *
  * @param arr the dynarr instance appending to
- * @param elem pointer or 8/16/32/64 bit value to insert at the end of the array
+ * @param val the value to insert
  * @return 0 no error;
  *         1 memory allocation failed
  *         2 resizing failed
+ *         3 val duplication failed
  */
-uint8_t dynarr_appendptr(dynarr* arr, void* elem);
-uint8_t dynarr_append8  (dynarr* arr, uint8_t elem);
-uint8_t dynarr_append16 (dynarr* arr, uint16_t elem);
-uint8_t dynarr_append32 (dynarr* arr, uint32_t elem);
-uint8_t dynarr_append64 (dynarr* arr, uint64_t elem);
+uint8_t dynarr_append(dynarr* arr, void* val);
 
 /**
- * Store an element in a particular position of the array. If the element is a
- * pointer the memory region it points to is not copied; the dynarr only keeps a
- * reference to it.
+ * Store an element in a particular position of the array.
  *
  * @param arr the dynarr instance to modify
- * @param i the index where elem must be inserted; must be in [0, len)
- * @param elem pointer or 8/16/32/64 bit value to insert at the specified index
+ * @param i the index where val must be inserted; must be in [0, len)
+ * @param val the value to insert
  * @return 0 no error;
  *         1 index out of range
+ *         3 val duplication failed
  */
-uint8_t dynarr_setptr(dynarr* arr, size_t i, void* elem);
-uint8_t dynarr_set8  (dynarr* arr, size_t i, uint8_t elem);
-uint8_t dynarr_set16 (dynarr* arr, size_t i, uint16_t elem);
-uint8_t dynarr_set32 (dynarr* arr, size_t i, uint32_t elem);
-uint8_t dynarr_set64 (dynarr* arr, size_t i, uint64_t elem);
+uint8_t dynarr_set(dynarr* arr, size_t i, void* val);
 
 /**
  * Get an element in a particular position of the array.
  *
  * @param arr the dynarr instance to get the element from
  * @param i the index where the element is; must be in [0, len)
- * @param elem pointer to pointer or 8/16/32/64 bit value where the value at the
- *             specified index will be stored
+ * @param val returned value
  * @return 0 no error;
  *         1 index out of range
  */
-uint8_t dynarr_getptr(dynarr* arr, size_t i, void** elem);
-uint8_t dynarr_get8  (dynarr* arr, size_t i, uint8_t* elem);
-uint8_t dynarr_get16 (dynarr* arr, size_t i, uint16_t* elem);
-uint8_t dynarr_get32 (dynarr* arr, size_t i, uint32_t* elem);
-uint8_t dynarr_get64 (dynarr* arr, size_t i, uint64_t* elem);
-
-/**
- * Returns a new dynamic array containing the j - i elements of arr starting
- * from index i (i.e. j is exclusive).
- *
- * if j > arr->len it is set to arr->len. After this correction if j <= i an
- * empty dynarr is returned.
- *
- * @param arr the array to slice
- * @param i the start index of the slice
- * @param j the last (exclusive) index of the slice
- * @param slice the returned slice. Note that it is allocated by the function
- * @return 0 if no error
- *         1 memory allocation failed
- *         2 resizing failed
- */
-uint8_t dynarr_slice(dynarr* arr, size_t i, size_t j, dynarr** slice);
+uint8_t dynarr_get(dynarr* arr, size_t i, void** val);
 
 /**
  * Remove an element from a particular index of the array.
@@ -145,13 +97,11 @@ size_t  dynarr_size(dynarr* arr);
  * Sort an array.
  *
  * @param arr the array to sort
- * @param compar the comparison function that will be applied to the entries of
- *               the array and that must return:
- *                - 0 on equality
- *                - < 0 if first entry < second entry
- *                - > 0 if first entry > second entry
+ * @return 0 no error
+ *         1 memory allocation failed
+ *         2 no compare function
  */
-uint8_t dynarr_sort(dynarr* arr, int (*compar)(const dynarr_entry*, const dynarr_entry*));
+uint8_t dynarr_sort(dynarr* arr);
 
 /**
  * Free a dynarr instance.
