@@ -121,7 +121,7 @@ uint32_t collision_generator(const void* data)
 
 void test_hmap_remove_with_collisions()
 {
-    struct pair { uint64_t key; uint8_t value; };
+    struct pair { uint64_t key; uint64_t value; };
 
     struct pair expected[] = {
         { .key = 42, .value = 15 },

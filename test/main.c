@@ -1,6 +1,7 @@
 #include "dynarr.h"
 #include "hmap.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 int main(int argc, char *argv[])
 {
@@ -22,5 +23,6 @@ int main(int argc, char *argv[])
     test_hmap_remove_unexistent_key();
     test_hmap_rehash();
 
+    printf("All tests succeeded!\n");
     return EXIT_SUCCESS;
 }
